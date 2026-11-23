@@ -186,6 +186,7 @@ public static class SessionReportGenerator
 
         AppendEventTable(report, "Focus and window transitions", focusEvents);
         AppendEventTable(report, "Input markers and collector capabilities", markerEvents);
+        AppendInputMarkerIntervals(report, markerEvents);
         AppendEventTable(report, "Collector health and data gaps", collectorEvents);
         AppendEventTable(report, "Rendering summaries", renderingEvents);
         AppendEventTable(report, "CPU samples", cpuEvents);
@@ -225,6 +226,63 @@ public static class SessionReportGenerator
         var reportPath = Path.ChangeExtension(jsonlPath, ".report.md");
         await File.WriteAllTextAsync(reportPath, report.ToString(), new UTF8Encoding(false), cancellationToken);
         return reportPath;
+    }
+
+    private static void AppendInputMarkerIntervals(StringBuilder report, IReadOnlyList<DiagnosticEvent> markers)
+    {
+        report.AppendLine("## Manual input-response marker intervals");
+        report.AppendLine();
+        report.AppendLine("These intervals run from the first manual marker to the second marker after the game visibly responds. They include human timing and must not be interpreted as exact keyboard-processing latency.");
+        report.AppendLine();
+
+        var starts = new Dictionary<int, DiagnosticEvent>();
+        var completed = new List<(int Pair, DiagnosticEvent Start, DiagnosticEvent Response)>();
+        foreach (var marker in markers.OrderBy(item => item.QpcTimestamp))
+        {
+            var pairValue = GetDetailValue(marker.Details, "TestPair");
+            var phase = GetDetailValue(marker.Details, "MarkerPhase");
+            if (!int.TryParse(pairValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var pair))
+                continue;
+
+            if (phase == "Start")
+                starts[pair] = marker;
+            else if (phase == "Response" && starts.Remove(pair, out var start))
+                completed.Add((pair, start, marker));
+        }
+
+        if (completed.Count == 0)
+        {
+            report.AppendLine("No complete start/response marker pair was recorded.");
+            report.AppendLine();
+            return;
+        }
+
+        report.AppendLine("| Test pair | Start (ms) | Response (ms) | Marker-to-response interval |");
+        report.AppendLine("|---:|---:|---:|---:|");
+        foreach (var pair in completed)
+        {
+            var frequency = pair.Response.QpcFrequency > 0 ? pair.Response.QpcFrequency : pair.Start.QpcFrequency;
+            var interval = frequency > 0
+                ? ((pair.Response.QpcTimestamp - pair.Start.QpcTimestamp) * 1000d / frequency).ToString("N3", CultureInfo.InvariantCulture) + " ms"
+                : "Unavailable";
+            report.AppendLine($"| {pair.Pair} | {pair.Start.RelativeMilliseconds.ToString("F3", CultureInfo.InvariantCulture)} | {pair.Response.RelativeMilliseconds.ToString("F3", CultureInfo.InvariantCulture)} | {interval} |");
+        }
+        report.AppendLine();
+    }
+
+    private static string? GetDetailValue(string? details, string key)
+    {
+        if (string.IsNullOrWhiteSpace(details))
+            return null;
+
+        foreach (var part in details.Split(';'))
+        {
+            var separator = part.IndexOf('=');
+            if (separator > 0 && part[..separator].Equals(key, StringComparison.OrdinalIgnoreCase))
+                return part[(separator + 1)..];
+        }
+
+        return null;
     }
 
     private static void AppendLatestPostFocusWindow(
