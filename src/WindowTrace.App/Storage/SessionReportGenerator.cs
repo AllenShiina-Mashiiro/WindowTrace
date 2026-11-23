@@ -115,6 +115,21 @@ public static class SessionReportGenerator
         report.AppendLine($"- QPC frequency: {qpcFrequency}");
         report.AppendLine();
 
+        report.AppendLine("### Display adapters and drivers");
+        report.AppendLine();
+        if (metadata?.DisplayAdapters.Count > 0)
+        {
+            report.AppendLine("| Adapter | Driver version | Driver date | Provider |");
+            report.AppendLine("|---|---|---|---|");
+            foreach (var adapter in metadata.DisplayAdapters)
+                report.AppendLine($"| {EscapeMarkdown(adapter.Name ?? adapter.RegistryKey)} | {EscapeMarkdown(adapter.DriverVersion ?? "Unavailable")} | {EscapeMarkdown(adapter.DriverDate ?? "Unavailable")} | {EscapeMarkdown(adapter.Provider ?? "Unavailable")} |");
+        }
+        else
+        {
+            report.AppendLine("No display-adapter registry metadata was available.");
+        }
+        report.AppendLine();
+
         report.AppendLine("## Capture quality");
         report.AppendLine();
         report.AppendLine($"- Total events: {totalEvents}");
