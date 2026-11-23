@@ -59,7 +59,7 @@ public static class SessionReportGenerator
                 AddRecent(renderingEvents, item, item.EventType == "RenderingSummary");
                 AddRecent(cpuEvents, item, item.EventType == "CpuSample");
                 AddRecent(gpuEvents, item, item.EventType == "GpuPdhSample");
-                AddRecent(markerEvents, item, item.EventType is "InputTestMarker" or "TargetSelected");
+                AddRecent(markerEvents, item, item.EventType is "InputTestMarker" or "TargetSelected" or "PresentMonCapability" or "EtwProviderStatus");
 
                 if (item.Source is not ("WindowTrace" or "PresentMonProcess" or "PresentMonMetrics" or "WinEvent" or "WindowPoll" or "PDH" or "GetSystemTimes+Process.TotalProcessorTime"))
                 {
@@ -131,7 +131,7 @@ public static class SessionReportGenerator
         report.AppendLine();
 
         AppendEventTable(report, "Focus and window transitions", focusEvents);
-        AppendEventTable(report, "Input markers and target selection", markerEvents);
+        AppendEventTable(report, "Input markers and collector capabilities", markerEvents);
         AppendEventTable(report, "Rendering summaries", renderingEvents);
         AppendEventTable(report, "CPU samples", cpuEvents);
         AppendEventTable(report, "GPU samples", gpuEvents);
