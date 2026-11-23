@@ -86,6 +86,8 @@ public sealed class CoreTests
             Assert.Contains("25H2", report);
             Assert.Contains("FocusLost", report);
             Assert.Contains("Rendering summaries", report);
+            Assert.Contains("Latest 1.5-second window after focus regained", report);
+            Assert.Contains("FPS=60.00", report);
             Assert.Contains("ETW events lost", report);
             Assert.Contains("does not establish causation", report);
         }
