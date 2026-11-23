@@ -22,7 +22,7 @@
                 <TextBlock Text="Windows foreground, CPU, ETW and frame diagnostics" Margin="0,3,0,0" Foreground="#64748B" />
             </StackPanel>
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                <Button x:Name="StartButton" Content="Start monitoring" Click="StartButton_Click"
+                <Button x:Name="StartButton" Content="2. Start monitoring" Click="StartButton_Click"
                         Padding="16,9" Margin="0,0,8,0" Background="#2868C7" Foreground="White" BorderThickness="0" />
                 <Button x:Name="StopButton" Content="Stop" Click="StopButton_Click"
                         Padding="16,9" Margin="0,0,8,0" IsEnabled="False" />
@@ -54,10 +54,10 @@
         <Border Grid.Row="2" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="10" Padding="14" Margin="0,0,0,10">
             <StackPanel>
                 <TextBlock Text="Target game process" FontWeight="SemiBold" Foreground="#172033" />
-                <TextBlock x:Name="TargetText" Text="No target selected. Click the delayed picker, then switch to the game within 3 seconds."
+                <TextBlock x:Name="TargetText" Text="Step 1: Select the game window from the running-window list. Then start monitoring."
                            Foreground="#64748B" Margin="0,4,0,10" TextWrapping="Wrap" />
                 <WrapPanel VerticalAlignment="Center">
-                    <Button x:Name="SetTargetButton" Content="Pick game in 3 seconds"
+                    <Button x:Name="SetTargetButton" Content="1. Select game window"
                             Click="SetTargetButton_Click" Padding="12,7" Margin="0,0,8,8" />
                     <Button x:Name="ClearTargetButton" Content="Clear target"
                             Click="ClearTargetButton_Click" Padding="12,7" Margin="0,0,8,8" />
@@ -71,7 +71,7 @@
                               IsChecked="False" Checked="InputMarkerCheckBox_Checked"
                               Unchecked="InputMarkerCheckBox_Unchecked" Margin="0,0,12,4" />
                 </WrapPanel>
-                <TextBlock Text="PresentMon 2.x is optional and runs only for the selected PID. For a manual response test, enable the marker, press Ctrl+Alt+F12 immediately before the test key, then press it again as soon as the game visibly responds. The report shows the marker-to-response interval; it includes human timing and is not raw keyboard latency. The chord is consumed, and no other keys or key contents are monitored."
+                <TextBlock Text="Workflow: 1) Select the game window. 2) Start monitoring. 3) Switch to the game, wait at least 3 seconds, Alt+Tab to another app, then return to the game. WindowTrace captures the focus-loss/focus-return cycle automatically. PresentMon 2.x is optional. The Ctrl+Alt+F12 marker is optional, consumed by WindowTrace, and records timestamps only—not key contents."
                            Foreground="#64748B" FontSize="11" TextWrapping="Wrap" />
             </StackPanel>
         </Border>
