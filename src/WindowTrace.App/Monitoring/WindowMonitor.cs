@@ -21,8 +21,10 @@ public sealed class WindowMonitor : IDisposable
 
     private readonly QpcClock _clock;
     private readonly WinEventDelegate _callback;
+    private const int PendingEventCapacity = 16_384;
     private readonly Channel<PendingWindowEvent> _pendingEvents;
     private readonly Task _worker;
+    private long _droppedPendingEvents;
     private nint _foregroundHook;
     private nint _minimizeHook;
     private nint _objectFocusHook;
@@ -34,8 +36,13 @@ public sealed class WindowMonitor : IDisposable
     {
         _clock = clock;
         _callback = OnWinEvent;
-        _pendingEvents = Channel.CreateUnbounded<PendingWindowEvent>(
-            new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
+        _pendingEvents = Channel.CreateBounded<PendingWindowEvent>(
+            new BoundedChannelOptions(PendingEventCapacity)
+            {
+                FullMode = BoundedChannelFullMode.Wait,
+                SingleReader = true,
+                SingleWriter = false
+            });
         _worker = Task.Run(ProcessPendingEventsAsync);
     }
 
@@ -44,6 +51,7 @@ public sealed class WindowMonitor : IDisposable
     public event Action<string>? MonitorError;
 
     public bool IsRunning => _foregroundHook != nint.Zero;
+    public long DroppedPendingEvents => Interlocked.Read(ref _droppedPendingEvents);
 
     public void Start()
     {
@@ -164,7 +172,11 @@ public sealed class WindowMonitor : IDisposable
                 return;
 
             var generation = Volatile.Read(ref _generation);
-            _pendingEvents.Writer.TryWrite(new PendingWindowEvent(qpc, hwnd, processId, threadId, windowEventType, idObject, idChild, generation));
+            if (!_pendingEvents.Writer.TryWrite(
+                    new PendingWindowEvent(qpc, hwnd, processId, threadId, windowEventType, idObject, idChild, generation)))
+            {
+                Interlocked.Increment(ref _droppedPendingEvents);
+            }
         }
         catch (Exception ex)
         {
