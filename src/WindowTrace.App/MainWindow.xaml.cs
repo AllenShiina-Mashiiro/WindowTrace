@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Collections.ObjectModel;
 using System.Runtime.InteropServices;
@@ -415,6 +416,26 @@ public partial class MainWindow : Window
         {
             collector.Start(path, processId);
             _presentMon = collector;
+
+            string presentMonVersion;
+            try { presentMonVersion = FileVersionInfo.GetVersionInfo(path).FileVersion ?? "Unavailable"; }
+            catch { presentMonVersion = "Unavailable"; }
+
+            var qpc = _clock.GetTimestamp();
+            _sessions.PublishTelemetry(new DiagnosticEvent(
+                Guid.NewGuid(),
+                "PresentMonCapability",
+                "PresentMonProcess",
+                qpc,
+                _clock.Frequency,
+                _clock.ToUtc(qpc),
+                _clock.ElapsedMilliseconds(_clock.AnchorTimestamp, qpc),
+                processId,
+                null,
+                null,
+                null,
+                null,
+                $"Executable={Path.GetFileName(path)};Version={presentMonVersion};QpcTimeRequested=True;InputTracking=False;V2Metrics=True"));
         }
         catch (Exception ex)
         {
