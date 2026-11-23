@@ -256,8 +256,15 @@ public static class SessionReportGenerator
         var warnings = collectorEvents.Count(item => item.QpcTimestamp >= focusGained.QpcTimestamp && item.QpcTimestamp <= endQpc);
         var win32kEvents = etwEvents.Where(item => item.QpcTimestamp >= focusGained.QpcTimestamp && item.QpcTimestamp <= endQpc &&
             item.Source.Contains("Win32k", StringComparison.OrdinalIgnoreCase)).ToArray();
-        var systemDpcEvents = etwEvents.Count(item => item.EventType.Contains("DPC", StringComparison.OrdinalIgnoreCase));
-        var systemIsrEvents = etwEvents.Count(item => item.EventType.Contains("ISR", StringComparison.OrdinalIgnoreCase));
+        var systemDpcEvents = etwEvents.Count(item =>
+            item.Source.Equals("NT Kernel Logger", StringComparison.OrdinalIgnoreCase) &&
+            item.EventType.Contains("DPC", StringComparison.OrdinalIgnoreCase));
+        var systemIsrEvents = etwEvents.Count(item =>
+            item.Source.Equals("NT Kernel Logger", StringComparison.OrdinalIgnoreCase) &&
+            item.EventType.Contains("ISR", StringComparison.OrdinalIgnoreCase));
+        var gpuVsyncDpcEvents = etwEvents.Count(item =>
+            item.Source.Contains("DxgKrnl", StringComparison.OrdinalIgnoreCase) &&
+            item.EventType.Contains("VSyncDPC", StringComparison.OrdinalIgnoreCase));
         var targetReadyThreadEvents = etwEvents.Count(item => item.EventType == "TargetThreadReady" &&
             item.ProcessId == focusGained.ProcessId &&
             item.QpcTimestamp >= focusGained.QpcTimestamp && item.QpcTimestamp <= endQpc);
@@ -294,8 +301,9 @@ public static class SessionReportGenerator
         report.AppendLine($"- First target CPU sample: {FormatOffset(cpu, focusGained)}; {(cpu is null ? "no CPU sample was recorded in this interval" : Truncate(cpu.Details ?? "No details", 220))}");
         report.AppendLine($"- First GPU sample: {FormatOffset(gpu, focusGained)}; {(gpu is null ? "no GPU sample was recorded in this interval" : Truncate(gpu.Details ?? "No details", 220))}");
         report.AppendLine($"- Win32k ETW events in interval: {win32kEvents.Length}");
-        report.AppendLine($"- System-wide DPC events in interval: {systemDpcEvents}");
-        report.AppendLine($"- System-wide ISR events in interval: {systemIsrEvents}");
+        report.AppendLine($"- System-wide DPC events in interval (NT Kernel Logger): {systemDpcEvents}");
+        report.AppendLine($"- System-wide ISR events in interval (NT Kernel Logger): {systemIsrEvents}");
+        report.AppendLine($"- GPU VSync DPC events in interval (DxgKrnl): {gpuVsyncDpcEvents}");
         report.AppendLine($"- Target-thread ReadyThread events in interval: {targetReadyThreadEvents}");
         report.AppendLine($"- Target-thread ready-to-running delay from QPC (ms): {(readyToRunSamples.Length == 0 ? "Unavailable" : $"n={readyToRunSamples.Length}; avg={readyToRunSamples.Average():F3}; max={readyToRunSamples.Max():F3}")}");
         report.AppendLine($"- Target threads mapped during the session: {targetThreadDiscoveryCount}");
