@@ -311,7 +311,7 @@ public partial class MainWindow : Window
         };
         DockPanel.SetDock(buttons, Dock.Bottom);
 
-        var list = new ListBox { MinHeight = 240, DisplayMemberPath = "Content" };
+        var list = new ListBox { MinHeight = 240 };
         root.Children.Add(list);
 
         var selectedSnapshot = (WindowSnapshot?)null;
