@@ -95,7 +95,8 @@ public sealed class GpuPdhSampler : IAsyncDisposable
                             !item.Name.Contains($"pid_{_targetPid}_", StringComparison.OrdinalIgnoreCase))
                             continue;
 
-                        fields.Add($"{counter.Key}[{item.Name}]={item.Value.ToString("R", CultureInfo.InvariantCulture)}");
+                        var unit = counter.Key == "GpuEngine" ? "percent" : "bytes";
+                        fields.Add($"{counter.Key}[{item.Name}]={item.Value.ToString("R", CultureInfo.InvariantCulture)} {unit}");
                     }
                 }
 
