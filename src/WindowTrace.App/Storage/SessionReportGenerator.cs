@@ -255,7 +255,9 @@ public static class SessionReportGenerator
             item.Source.Contains("Win32k", StringComparison.OrdinalIgnoreCase)).ToArray();
         var systemDpcEvents = etwEvents.Count(item => item.EventType.Contains("DPC", StringComparison.OrdinalIgnoreCase));
         var systemIsrEvents = etwEvents.Count(item => item.EventType.Contains("ISR", StringComparison.OrdinalIgnoreCase));
-        var systemReadyThreadEvents = etwEvents.Count(item => item.EventType.Contains("ReadyThread", StringComparison.OrdinalIgnoreCase));
+        var targetReadyThreadEvents = etwEvents.Count(item => item.EventType == "TargetThreadReady" &&
+            item.ProcessId == focusGained.ProcessId &&
+            item.QpcTimestamp >= focusGained.QpcTimestamp && item.QpcTimestamp <= endQpc);
         var targetContextSwitches = etwEvents.Where(item => item.EventType == "TargetThreadContextSwitch" &&
             item.ProcessId == focusGained.ProcessId &&
             item.QpcTimestamp >= focusGained.QpcTimestamp && item.QpcTimestamp <= endQpc).ToArray();
@@ -277,6 +279,11 @@ public static class SessionReportGenerator
             .Distinct()
             .Take(8)
             .ToArray();
+        var readyToRunSamples = targetContextSwitches
+            .Select(item => GetDetailValue(item.Details, "ReadyToRunMs"))
+            .Where(value => double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out _))
+            .Select(value => double.Parse(value!, NumberStyles.Float, CultureInfo.InvariantCulture))
+            .ToArray();
 
         report.AppendLine("### Post-focus evidence summary");
         report.AppendLine();
@@ -286,7 +293,8 @@ public static class SessionReportGenerator
         report.AppendLine($"- Win32k ETW events in interval: {win32kEvents.Length}");
         report.AppendLine($"- System-wide DPC events in interval: {systemDpcEvents}");
         report.AppendLine($"- System-wide ISR events in interval: {systemIsrEvents}");
-        report.AppendLine($"- System-wide ReadyThread events in interval: {systemReadyThreadEvents}");
+        report.AppendLine($"- Target-thread ReadyThread events in interval: {targetReadyThreadEvents}");
+        report.AppendLine($"- Target-thread ready-to-running delay from QPC (ms): {(readyToRunSamples.Length == 0 ? "Unavailable" : $"n={readyToRunSamples.Length}; avg={readyToRunSamples.Average():F3}; max={readyToRunSamples.Max():F3}")}");
         report.AppendLine($"- Target threads mapped during the session: {targetThreadDiscoveryCount}");
         report.AppendLine($"- Target-thread context switches in interval: {targetContextSwitches.Length} (incoming: {incomingSwitches}; outgoing: {outgoingSwitches})");
         report.AppendLine($"- Target-thread incoming NewThreadWaitTime raw values: {(incomingWaitValues.Length == 0 ? "Unavailable" : string.Join(", ", incomingWaitValues))}");
