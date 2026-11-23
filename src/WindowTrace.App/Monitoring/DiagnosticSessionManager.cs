@@ -137,24 +137,25 @@ public sealed class DiagnosticSessionManager
                 {
                     _writer.TryWrite(ForActiveSession(item));
 
-                    if (isTargetForeground)
+                    if (isTargetForeground && !wasTargetForeground)
                     {
                         _postCaptureDeadlineQpc = item.QpcTimestamp + (long)(_clock.Frequency * 5d);
                         State = DiagnosticSessionState.FocusGainedPostCapture;
                         WriteSessionMarkerLocked("FocusGained", item.QpcTimestamp, "Target process regained foreground.");
                         status = "Target regained foreground; capturing the next 5 seconds.";
                     }
-                    else if (State == DiagnosticSessionState.FocusGainedPostCapture)
+                    else if (!isTargetForeground && State == DiagnosticSessionState.FocusGainedPostCapture)
                     {
                         _postCaptureDeadlineQpc = null;
                         State = DiagnosticSessionState.Background;
                         WriteSessionMarkerLocked("FocusLostAgain", item.QpcTimestamp, "Target left foreground again before post-capture completed.");
                         status = "Target left foreground again during post-capture; session remains active.";
                     }
-                    else
+                    else if (!isTargetForeground)
                     {
                         State = DiagnosticSessionState.Background;
                     }
+                    // Duplicate foreground notifications do not extend the post-capture window.
                 }
 
                 _lastForegroundProcessId = foregroundProcessId;
