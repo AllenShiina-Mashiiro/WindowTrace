@@ -189,6 +189,12 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
     {
         try
         {
+            var eventName = data.EventName ?? "UnknownEvent";
+            // Context switches have their own subscription below; do not normalize
+            // or count the same event a second time on the generic callback.
+            if (eventName.Contains("CSwitch", StringComparison.OrdinalIgnoreCase))
+                return;
+
 #pragma warning disable CS0618
             var timestamp = EtwTimestampNormalizer.Normalize(data.TimeStampQPC, _clock.GetTimestamp());
 #pragma warning restore CS0618
@@ -200,9 +206,6 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
             var processId = data.ProcessID >= 0 ? (uint?)data.ProcessID : null;
             var threadId = data.ThreadID >= 0 ? (uint?)data.ThreadID : null;
             var providerName = data.ProviderName ?? "UnknownProvider";
-            var eventName = data.EventName ?? "UnknownEvent";
-            if (eventName.Contains("CSwitch", StringComparison.OrdinalIgnoreCase))
-                return;
 
             if (TryHandleThreadLifecycleEvent(data, qpc, timestampQuality))
                 return;
