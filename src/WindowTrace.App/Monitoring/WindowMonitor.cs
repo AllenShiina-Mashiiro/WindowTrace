@@ -14,13 +14,16 @@ namespace WindowTrace.Monitoring;
 public sealed class WindowMonitor : IDisposable
 {
     private const uint EventSystemForeground = 0x0003;
+    private const uint EventSystemMinimizeStart = 0x0016;
+    private const uint EventSystemMinimizeEnd = 0x0017;
     private const uint WineventOutOfContext = 0x0000;
 
     private readonly QpcClock _clock;
     private readonly WinEventDelegate _callback;
     private readonly Channel<PendingWindowEvent> _pendingEvents;
     private readonly Task _worker;
-    private nint _hook;
+    private nint _foregroundHook;
+    private nint _minimizeHook;
     private volatile bool _disposed;
 
     public WindowMonitor(QpcClock clock)
@@ -33,9 +36,10 @@ public sealed class WindowMonitor : IDisposable
     }
 
     public event Action<WindowSnapshot>? ForegroundChanged;
+    public event Action<WindowSnapshot>? WindowStateChanged;
     public event Action<string>? MonitorError;
 
-    public bool IsRunning => _hook != nint.Zero;
+    public bool IsRunning => _foregroundHook != nint.Zero;
 
     public void Start()
     {
@@ -43,7 +47,7 @@ public sealed class WindowMonitor : IDisposable
         if (IsRunning)
             return;
 
-        _hook = SetWinEventHook(
+        _foregroundHook = SetWinEventHook(
             EventSystemForeground,
             EventSystemForeground,
             nint.Zero,
@@ -52,12 +56,24 @@ public sealed class WindowMonitor : IDisposable
             0,
             WineventOutOfContext);
 
-        if (_hook == nint.Zero)
+        if (_foregroundHook == nint.Zero)
         {
             var error = Marshal.GetLastWin32Error();
             throw new InvalidOperationException(
-                $"SetWinEventHook failed. Win32 error: {error}.");
+                $"SetWinEventHook for foreground events failed. Win32 error: {error}.");
         }
+
+        _minimizeHook = SetWinEventHook(
+            EventSystemMinimizeStart,
+            EventSystemMinimizeEnd,
+            nint.Zero,
+            _callback,
+            0,
+            0,
+            WineventOutOfContext);
+
+        if (_minimizeHook == nint.Zero)
+            MonitorError?.Invoke($"Minimize/restore hook unavailable. Win32 error: {Marshal.GetLastWin32Error()}.");
     }
 
     public WindowSnapshot? CaptureForeground()
@@ -71,16 +87,22 @@ public sealed class WindowMonitor : IDisposable
         if (processId == 0)
             return null;
 
-        return BuildSnapshot(new PendingWindowEvent(qpc, hwnd, processId, threadId));
+        return BuildSnapshot(new PendingWindowEvent(qpc, hwnd, processId, threadId, "ForegroundChanged"));
     }
 
     public void Stop()
     {
-        if (_hook == nint.Zero)
-            return;
+        if (_foregroundHook != nint.Zero)
+        {
+            UnhookWinEvent(_foregroundHook);
+            _foregroundHook = nint.Zero;
+        }
 
-        UnhookWinEvent(_hook);
-        _hook = nint.Zero;
+        if (_minimizeHook != nint.Zero)
+        {
+            UnhookWinEvent(_minimizeHook);
+            _minimizeHook = nint.Zero;
+        }
     }
 
     private void OnWinEvent(
@@ -92,7 +114,17 @@ public sealed class WindowMonitor : IDisposable
         uint eventThread,
         uint eventTime)
     {
-        if (eventType != EventSystemForeground || hwnd == nint.Zero || _disposed)
+        if (_disposed || hwnd == nint.Zero)
+            return;
+
+        var windowEventType = eventType switch
+        {
+            EventSystemForeground => "ForegroundChanged",
+            EventSystemMinimizeStart => "WindowMinimizeStarted",
+            EventSystemMinimizeEnd => "WindowRestored",
+            _ => null
+        };
+        if (windowEventType is null)
             return;
 
         try
@@ -102,7 +134,7 @@ public sealed class WindowMonitor : IDisposable
             if (processId == 0)
                 return;
 
-            _pendingEvents.Writer.TryWrite(new PendingWindowEvent(qpc, hwnd, processId, threadId));
+            _pendingEvents.Writer.TryWrite(new PendingWindowEvent(qpc, hwnd, processId, threadId, windowEventType));
         }
         catch (Exception ex)
         {
@@ -117,8 +149,13 @@ public sealed class WindowMonitor : IDisposable
             try
             {
                 var snapshot = BuildSnapshot(pending);
-                if (snapshot is not null)
+                if (snapshot is null)
+                    continue;
+
+                if (pending.EventType == "ForegroundChanged")
                     ForegroundChanged?.Invoke(snapshot);
+                else
+                    WindowStateChanged?.Invoke(snapshot);
             }
             catch (Exception ex)
             {
@@ -140,7 +177,8 @@ public sealed class WindowMonitor : IDisposable
             pending.ThreadId,
             ReadProcessName(pending.ProcessId),
             ReadWindowTitle(pending.Handle),
-            IsIconic(pending.Handle));
+            IsIconic(pending.Handle),
+            pending.EventType);
     }
 
     private static string ReadWindowTitle(nint hwnd)
@@ -184,7 +222,8 @@ public sealed class WindowMonitor : IDisposable
         long QpcTimestamp,
         nint Handle,
         uint ProcessId,
-        uint ThreadId);
+        uint ThreadId,
+        string EventType);
 
     private delegate void WinEventDelegate(
         nint hWinEventHook,
