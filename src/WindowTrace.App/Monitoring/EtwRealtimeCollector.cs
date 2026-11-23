@@ -33,6 +33,7 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
     private readonly List<EtwProviderStatus> _providerStatuses = [];
     private bool _disposed;
     private int _eventsLost = -1;
+    private long _timestampFallbackCount;
     private int _targetProcessId;
     private readonly ConcurrentDictionary<uint, uint> _threadProcessIds = new();
     private readonly ConcurrentDictionary<uint, long> _targetThreadReadyQpc = new();
@@ -88,6 +89,7 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
             catch { return _eventsLost; }
         }
     }
+    public long TimestampFallbackCount => Interlocked.Read(ref _timestampFallbackCount);
     public bool IsRunning => _session is not null && _processingTask is { IsCompleted: false };
 
     public void Start()
@@ -182,8 +184,13 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
 #pragma warning disable CS0618
             var qpc = data.TimeStampQPC;
 #pragma warning restore CS0618
+            var timestampQuality = "ETWEventQPC";
             if (qpc <= 0)
+            {
                 qpc = _clock.GetTimestamp();
+                timestampQuality = "CollectorReceiptQPCFallback";
+                Interlocked.Increment(ref _timestampFallbackCount);
+            }
 
             var processId = data.ProcessID >= 0 ? (uint?)data.ProcessID : null;
             var threadId = data.ThreadID >= 0 ? (uint?)data.ThreadID : null;
@@ -192,7 +199,7 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
             if (eventName.Contains("CSwitch", StringComparison.OrdinalIgnoreCase))
                 return;
 
-            if (TryHandleThreadLifecycleEvent(data, qpc))
+            if (TryHandleThreadLifecycleEvent(data, qpc, timestampQuality))
                 return;
 
             if (!EtwEventFilter.ShouldPersist(providerName, eventName, data.TaskName ?? string.Empty, processId, TargetProcessId))
@@ -206,7 +213,7 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
             var samplingDetails = samplingIntervalMs > 0
                 ? $"ETWSamplingIntervalMs={samplingIntervalMs};"
                 : string.Empty;
-            var details = $"TimestampQuality=ETWQPC;EventId={data.ID};Task={data.TaskName};Opcode={data.OpcodeName};{samplingDetails}{payloadDetails}";
+            var details = $"TimestampQuality={timestampQuality};EventId={data.ID};Task={data.TaskName};Opcode={data.OpcodeName};{samplingDetails}{payloadDetails}";
 
             EventReceived?.Invoke(new DiagnosticEvent(
                 Guid.NewGuid(),
@@ -236,8 +243,13 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
 #pragma warning disable CS0618
             long qpc = data.TimeStampQPC;
 #pragma warning restore CS0618
+            var timestampQuality = "ETWEventQPC";
             if (qpc <= 0)
+            {
                 qpc = _clock.GetTimestamp();
+                timestampQuality = "CollectorReceiptQPCFallback";
+                Interlocked.Increment(ref _timestampFallbackCount);
+            }
 
             var processIdValue = data.ProcessID;
             var threadIdValue = data.ThreadID;
@@ -284,7 +296,7 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
             }
 
             var details = string.Join(";",
-                "TimestampQuality=ETWQPC",
+                $"TimestampQuality={timestampQuality}",
                 $"TargetThreadRole={targetRole}",
                 $"TargetThreadId={targetThreadId?.ToString(CultureInfo.InvariantCulture) ?? "Unavailable"}",
                 $"OldThreadId={oldThreadId?.ToString(CultureInfo.InvariantCulture) ?? "Unavailable"}",
@@ -320,7 +332,7 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
         }
     }
 
-    private bool TryHandleThreadLifecycleEvent(TraceEvent data, long qpc)
+    private bool TryHandleThreadLifecycleEvent(TraceEvent data, long qpc, string timestampQuality)
     {
         var taskName = data.TaskName ?? string.Empty;
         var opcode = data.OpcodeName ?? string.Empty;
@@ -356,7 +368,7 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
                     null,
                     null,
                     null,
-                    $"TimestampQuality=ETWQPC;ReadyThreadId={threadId};ReadyAfterLastSchedule={isAfterLastSchedule};{FormatPayloadValue(payload, "AdjustReason")};{FormatPayloadValue(payload, "AdjustIncrement")};{FormatPayloadValue(payload, "Flag")}"));
+                    $"TimestampQuality={timestampQuality};ReadyThreadId={threadId};ReadyAfterLastSchedule={isAfterLastSchedule};{FormatPayloadValue(payload, "AdjustReason")};{FormatPayloadValue(payload, "AdjustIncrement")};{FormatPayloadValue(payload, "Flag")}"));
             }
 
             return true;
