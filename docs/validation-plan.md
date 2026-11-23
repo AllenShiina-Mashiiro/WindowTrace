@@ -69,7 +69,7 @@ Inspect QPC values, not only wall-clock display strings.
 - Record provider status for each machine.
 - Test once as a standard user and, only if policy permits, once from an already elevated terminal.
 - Do not change permissions or stop unrelated ETW sessions.
-- Record ETW EventsLost, rolling-buffer evictions, normal queue overflow, critical queue overflow, file-cap drops and writer-error drops as separate metrics. ETW EventsLost=0 does not mean the application persisted every event.
+- Record ETW EventsLost, ETW sampling-suppressed callbacks, rolling-buffer evictions, normal queue overflow, critical queue overflow, regular telemetry-budget drops, hard file-cap drops and writer-error drops as separate metrics. ETW EventsLost=0 does not mean the application persisted every event.
 - Verify the quality file reports pre-roll events selected, queued, written and rejected independently; the written count must reflect completed writer flushes, not only successful enqueue calls.
 - Under normal-queue saturation and after the regular file-byte budget is reached, verify FocusLost/FocusGained, session start/stop/completion, manual markers and collector-health records can still use the reserved priority queue and byte budget.
 - Confirm that the collector shuts down cleanly and does not leave a WindowTrace ETW session behind.
