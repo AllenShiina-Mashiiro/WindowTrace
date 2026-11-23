@@ -190,7 +190,7 @@ public sealed class CoreTests
             Assert.Contains("ETW events lost", report);
             Assert.Contains("Records not persisted (total): 9", report);
             Assert.Contains("Queue overflow: 2", report);
-            Assert.Contains("File size limit: 3", report);
+            Assert.Contains("File budget drops (combined): 3", report);
             Assert.Contains("Writer errors: 4", report);
             Assert.Contains("does not establish causation", report);
         }
@@ -685,6 +685,8 @@ public sealed class CoreTests
             }
 
             Assert.True(writer.LimitReached);
+            Assert.True(writer.RegularFileBudgetReached);
+            Assert.False(writer.TotalFileLimitReached);
             Assert.True(writer.TryWrite(CreateEvent(9000) with
             {
                 EventType = "FocusGained",
