@@ -38,6 +38,18 @@ public sealed class FrameMetricsAggregator
             frameTimeSource = "MsBetweenDisplayChange";
         }
 
+        if (frameTime is null)
+        {
+            frameTime = TryReadPositive(fields, "MsBetweenAppStart");
+            frameTimeSource = "MsBetweenAppStart";
+        }
+
+        if (frameTime is null)
+        {
+            frameTime = TryReadPositive(fields, "MsBetweenSimulationStart");
+            frameTimeSource = "MsBetweenSimulationStart";
+        }
+
         if (frameTime is null && qpcIsFrameTimestamp && qpc > 0)
         {
             if (state.PreviousQpc > 0 && qpc > state.PreviousQpc)
@@ -76,6 +88,11 @@ public sealed class FrameMetricsAggregator
         var gpuBusy = Read(fields, "MsGPUBusy");
         var gpuWait = Read(fields, "MsGPUWait");
         var dropped = Read(fields, "Dropped");
+        var cpuBusy = Read(fields, "MsCPUBusy");
+        var cpuWait = Read(fields, "MsCPUWait");
+        var displayLatency = Read(fields, "MsDisplayLatency");
+        var untilDisplayed = Read(fields, "MsUntilDisplayed");
+        var renderPresentLatency = Read(fields, "MsRenderPresentLatency");
         var timestampQuality = qpcIsFrameTimestamp ? "PresentMonQpc" : "ConsumerReceiptQpc";
 
         var details =
@@ -84,8 +101,10 @@ public sealed class FrameMetricsAggregator
             $"AverageFrameTimeMs={average:F3};FrameTimeVarianceMs2={variance:F4};" +
             $"FrameTimeStdDevMs={Math.Sqrt(variance):F3};FrameTimeP95Ms={ordered[p95Index]:F3};" +
             $"FrameTimeMinMs={ordered[0]:F3};FrameTimeMaxMs={ordered[^1]:F3};" +
+            $"CurrentCPUBusyMs={cpuBusy};CurrentCPUWaitMs={cpuWait};" +
             $"CurrentGPUBusyMs={gpuBusy};CurrentGPUWaitMs={gpuWait};" +
-            $"PresentMode={presentMode};Dropped={dropped}";
+            $"CurrentDisplayLatencyMs={displayLatency};CurrentUntilDisplayedMs={untilDisplayed};" +
+            $"CurrentRenderPresentLatencyMs={renderPresentLatency};PresentMode={presentMode};Dropped={dropped}";
 
         return new DiagnosticEvent(
             Guid.NewGuid(),
