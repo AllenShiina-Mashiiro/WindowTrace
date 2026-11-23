@@ -27,6 +27,8 @@ public sealed class CoreTests
     [Theory]
     [InlineData("Microsoft-Windows-DxgKrnl", "Profiler/Start", "Profiler", 14968u, 14968u, false)]
     [InlineData("Microsoft-Windows-DxgKrnl", "QueuePacket/Start", "QueuePacket", 14968u, 14968u, true)]
+    [InlineData("Microsoft-Windows-DxgKrnl", "QueuePacket/Start", "QueuePacket", 4u, 14968u, false)]
+    [InlineData("Microsoft-Windows-DxgKrnl", "VSyncDPC", "VSyncDPC", 4u, 14968u, true)]
     [InlineData("Microsoft-Windows-Win32k", "WakeInputIdle", "WakeInputIdle", 14968u, 14968u, true)]
     [InlineData("Microsoft-Windows-Win32k", "WakeInputIdle", "WakeInputIdle", 27360u, 14968u, false)]
     [InlineData("Microsoft-Windows-Dwm-Core", "SCHEDULE_PRESENT/Start", "SCHEDULE_PRESENT", 2032u, 14968u, true)]
