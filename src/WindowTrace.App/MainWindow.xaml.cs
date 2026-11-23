@@ -892,6 +892,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        _sessions.SetEtwTimestampFallbackCount(_etwCollector.TimestampFallbackCount);
         var lost = _etwCollector.EventsLost;
         if (lost >= 0 && lost != _lastReportedEtwEventsLost)
         {
