@@ -324,6 +324,7 @@ public sealed class DiagnosticSessionManager
             _actualPreRollMs,
             _preRollEventCount,
             _bufferEvictionsAtSessionStart,
+            _buffer.DroppedEvents,
             _buffer.Capacity);
 
     private async Task WriteQualityReportAsync(
@@ -344,7 +345,8 @@ public sealed class DiagnosticSessionManager
             context.ActualPreRollMs,
             context.PreRollEventCount,
             context.BufferCapacity,
-            context.BufferEvictionsSinceStartup,
+            context.BufferEvictionsAtSessionStart,
+            context.BufferEvictionsAtFinalization,
             writer.DroppedRecords,
             writer.BytesWritten,
             writer.MaxBytes,
@@ -369,6 +371,7 @@ public sealed class DiagnosticSessionManager
         long SessionStartQpc,
         double ActualPreRollMs,
         int PreRollEventCount,
-        long BufferEvictionsSinceStartup,
+        long BufferEvictionsAtSessionStart,
+        long BufferEvictionsAtFinalization,
         int BufferCapacity);
 }
