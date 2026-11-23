@@ -36,6 +36,7 @@ public static class SessionReportGenerator
         long? firstQpc = null;
         long? lastQpc = null;
         var totalEvents = 0;
+        var targetThreadDiscoveryCount = 0;
 
         await using (var stream = new FileStream(jsonlPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan))
         using (var reader = new StreamReader(stream, Encoding.UTF8))
@@ -59,6 +60,8 @@ public static class SessionReportGenerator
                     throw new InvalidDataException($"JSONL record at line {lineNumber} was null.");
 
                 totalEvents++;
+                if (item.EventType == "TargetThreadDiscovered")
+                    targetThreadDiscoveryCount++;
                 firstQpc = firstQpc is null ? item.QpcTimestamp : Math.Min(firstQpc.Value, item.QpcTimestamp);
                 lastQpc = lastQpc is null ? item.QpcTimestamp : Math.Max(lastQpc.Value, item.QpcTimestamp);
 
@@ -66,7 +69,7 @@ public static class SessionReportGenerator
                 AddRecent(renderingEvents, item, item.EventType == "RenderingSummary");
                 AddRecent(cpuEvents, item, item.EventType == "CpuSample");
                 AddRecent(gpuEvents, item, item.EventType == "GpuPdhSample");
-                AddRecent(markerEvents, item, item.EventType is "InputTestMarker" or "TargetSelected" or "PresentMonCapability" or "EtwProviderCapability");
+                AddRecent(markerEvents, item, item.EventType is "InputTestMarker" or "TargetSelected" or "PresentMonCapability" or "EtwProviderCapability" or "TargetThreadDiscovered");
                 AddRecent(collectorEvents, item, item.EventType is "CollectorWarning" or "WindowMonitorWarning" or "WindowMonitorQueueDrops" or "EtwEventsLostCounter");
 
                 if (IsEtwSource(item.Source))
@@ -185,13 +188,13 @@ public static class SessionReportGenerator
         report.AppendLine();
 
         AppendEventTable(report, "Focus and window transitions", focusEvents);
-        AppendEventTable(report, "Input markers and collector capabilities", markerEvents);
+        AppendEventTable(report, "Input markers, target threads and collector capabilities", markerEvents);
         AppendInputMarkerIntervals(report, markerEvents);
         AppendEventTable(report, "Collector health and data gaps", collectorEvents);
         AppendEventTable(report, "Rendering summaries", renderingEvents);
         AppendEventTable(report, "CPU samples", cpuEvents);
         AppendEventTable(report, "GPU samples", gpuEvents);
-        AppendLatestPostFocusWindow(report, focusEvents, renderingEvents, cpuEvents, gpuEvents, markerEvents, collectorEvents, postFocusEtwEvents, postFocusEtwTruncated);
+        AppendLatestPostFocusWindow(report, focusEvents, renderingEvents, cpuEvents, gpuEvents, markerEvents, collectorEvents, postFocusEtwEvents, postFocusEtwTruncated, targetThreadDiscoveryCount);
 
         report.AppendLine("## ETW event volume");
         report.AppendLine();
@@ -235,7 +238,8 @@ public static class SessionReportGenerator
         IReadOnlyList<DiagnosticEvent> cpuEvents,
         IReadOnlyList<DiagnosticEvent> gpuEvents,
         IReadOnlyList<DiagnosticEvent> collectorEvents,
-        IReadOnlyList<DiagnosticEvent> etwEvents)
+        IReadOnlyList<DiagnosticEvent> etwEvents,
+        int targetThreadDiscoveryCount)
     {
         var endQpc = focusGained.QpcTimestamp + (long)(focusGained.QpcFrequency * 1.5d);
         var rendering = renderingEvents.Where(item => item.QpcTimestamp >= focusGained.QpcTimestamp && item.QpcTimestamp <= endQpc)
@@ -247,9 +251,27 @@ public static class SessionReportGenerator
         var warnings = collectorEvents.Count(item => item.QpcTimestamp >= focusGained.QpcTimestamp && item.QpcTimestamp <= endQpc);
         var win32kEvents = etwEvents.Where(item => item.QpcTimestamp >= focusGained.QpcTimestamp && item.QpcTimestamp <= endQpc &&
             item.Source.Contains("Win32k", StringComparison.OrdinalIgnoreCase)).ToArray();
-        var targetContextSwitches = etwEvents.Count(item => item.EventType == "ThreadContextSwitch" &&
+        var targetContextSwitches = etwEvents.Where(item => item.EventType == "TargetThreadContextSwitch" &&
             item.ProcessId == focusGained.ProcessId &&
-            item.QpcTimestamp >= focusGained.QpcTimestamp && item.QpcTimestamp <= endQpc);
+            item.QpcTimestamp >= focusGained.QpcTimestamp && item.QpcTimestamp <= endQpc).ToArray();
+        var incomingSwitches = targetContextSwitches.Count(item =>
+            GetDetailValue(item.Details, "TargetThreadRole") is "Incoming" or "Both");
+        var outgoingSwitches = targetContextSwitches.Count(item =>
+            GetDetailValue(item.Details, "TargetThreadRole") is "Outgoing" or "Both");
+        var incomingWaitValues = targetContextSwitches
+            .Where(item => GetDetailValue(item.Details, "TargetThreadRole") is "Incoming" or "Both")
+            .Select(item => GetDetailValue(item.Details, "NewThreadWaitTime"))
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct()
+            .Take(8)
+            .ToArray();
+        var outgoingStates = targetContextSwitches
+            .Where(item => GetDetailValue(item.Details, "TargetThreadRole") is "Outgoing" or "Both")
+            .Select(item => GetDetailValue(item.Details, "OldThreadState"))
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct()
+            .Take(8)
+            .ToArray();
 
         report.AppendLine("### Post-focus evidence summary");
         report.AppendLine();
@@ -257,7 +279,10 @@ public static class SessionReportGenerator
         report.AppendLine($"- First target CPU sample: {FormatOffset(cpu, focusGained)}; {(cpu is null ? "no CPU sample was recorded in this interval" : Truncate(cpu.Details ?? "No details", 220))}");
         report.AppendLine($"- First GPU sample: {FormatOffset(gpu, focusGained)}; {(gpu is null ? "no GPU sample was recorded in this interval" : Truncate(gpu.Details ?? "No details", 220))}");
         report.AppendLine($"- Win32k ETW events in interval: {win32kEvents.Length}");
-        report.AppendLine($"- Target-process context-switch events in interval: {targetContextSwitches}");
+        report.AppendLine($"- Target threads mapped during the session: {targetThreadDiscoveryCount}");
+        report.AppendLine($"- Target-thread context switches in interval: {targetContextSwitches.Length} (incoming: {incomingSwitches}; outgoing: {outgoingSwitches})");
+        report.AppendLine($"- Target-thread incoming NewThreadWaitTime raw values: {(incomingWaitValues.Length == 0 ? "Unavailable" : string.Join(", ", incomingWaitValues))}");
+        report.AppendLine($"- Target-thread outgoing OldThreadState raw values: {(outgoingStates.Length == 0 ? "Unavailable" : string.Join(", ", outgoingStates))}");
         report.AppendLine($"- Collector warnings/data-gap events in interval: {warnings}");
         report.AppendLine("- These observations help distinguish a presentation stall from a delayed game response, but do not prove which component caused the delay.");
         report.AppendLine();
@@ -334,7 +359,8 @@ public static class SessionReportGenerator
         IReadOnlyList<DiagnosticEvent> markerEvents,
         IReadOnlyList<DiagnosticEvent> collectorEvents,
         IReadOnlyList<DiagnosticEvent> etwEvents,
-        int etwEventsTruncated)
+        int etwEventsTruncated,
+        int targetThreadDiscoveryCount)
     {
         report.AppendLine("## Latest 1.5-second window after focus regained");
         report.AppendLine();
@@ -355,7 +381,7 @@ public static class SessionReportGenerator
         var end = start + 1500d;
         report.AppendLine($"Reference interval: {start.ToString("F3", CultureInfo.InvariantCulture)} to {end.ToString("F3", CultureInfo.InvariantCulture)} ms relative to session start.");
         report.AppendLine();
-        AppendPostFocusEvidenceSummary(report, focusGained, renderingEvents, cpuEvents, gpuEvents, collectorEvents, etwEvents);
+        AppendPostFocusEvidenceSummary(report, focusGained, renderingEvents, cpuEvents, gpuEvents, collectorEvents, etwEvents, targetThreadDiscoveryCount);
 
         var windowEvents = renderingEvents.Concat(cpuEvents).Concat(gpuEvents).Concat(markerEvents).Concat(collectorEvents).Concat(etwEvents)
             .Where(item => item.RelativeMilliseconds >= start && item.RelativeMilliseconds <= end)
