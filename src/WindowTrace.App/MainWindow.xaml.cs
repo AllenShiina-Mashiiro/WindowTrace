@@ -383,6 +383,7 @@ public partial class MainWindow : Window
 
         var collector = new PresentMonProcess(_clock);
         collector.FrameReceived += OnPresentMonFrame;
+        collector.RenderingSummaryReceived += OnRenderingSummary;
         collector.StatusChanged += OnCollectorWarning;
 
         try
@@ -581,6 +582,12 @@ public partial class MainWindow : Window
         var count = Interlocked.Increment(ref _presentMonFrameCount);
         if (count % 60 == 0)
             Dispatcher.InvokeAsync(() => DisplayEvent(item));
+    }
+
+    private void OnRenderingSummary(DiagnosticEvent item)
+    {
+        _sessions.PublishTelemetry(item);
+        Dispatcher.InvokeAsync(() => DisplayEvent(item));
     }
 
     private void OnCollectorWarning(string message)
