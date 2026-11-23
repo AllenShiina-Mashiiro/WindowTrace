@@ -251,7 +251,8 @@ public sealed class JsonlEventWriter : IAsyncDisposable
                             continue;
                         }
                     }
-                    else if (currentBytes + lineBytes > MaxBytes - _criticalReserveBytes)
+                    else if (Volatile.Read(ref _regularLimitReached) != 0 ||
+                             currentBytes + lineBytes > MaxBytes - _criticalReserveBytes)
                     {
                         Interlocked.Exchange(ref _regularLimitReached, 1);
                         Interlocked.Increment(ref _fileLimitDroppedRecords);
