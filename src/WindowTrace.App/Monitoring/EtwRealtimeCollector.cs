@@ -229,14 +229,16 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
             if (qpc <= 0)
                 qpc = _clock.GetTimestamp();
 
-            var payload = ReadPayload(data);
             var processIdValue = data.ProcessID;
             var threadIdValue = data.ThreadID;
             if (processIdValue >= 0 && threadIdValue >= 0)
                 RegisterThreadMapping((uint)threadIdValue, (uint)processIdValue, "ContextSwitchEventHeader", qpc);
 
-            var oldThreadId = GetPayloadUInt32(payload, "OldThreadId");
-            var newThreadId = GetPayloadUInt32(payload, "NewThreadId");
+            // Context switches are system-wide and extremely frequent. Read only the
+            // two thread IDs first; do not allocate a payload dictionary unless the
+            // event is actually associated with the selected target process.
+            var oldThreadId = GetPayloadUInt32(data, "OldThreadId");
+            var newThreadId = GetPayloadUInt32(data, "NewThreadId");
             var oldProcessId = oldThreadId is uint oldId && _threadProcessIds.TryGetValue(oldId, out var oldPid)
                 ? oldPid
                 : (uint?)null;
@@ -281,10 +283,10 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
                 $"NewThreadProcessId={newProcessId?.ToString(CultureInfo.InvariantCulture) ?? "Unmapped"}",
                 $"HeaderProcessId={(processIdValue >= 0 ? processIdValue.ToString(CultureInfo.InvariantCulture) : "Unavailable")}",
                 $"HeaderThreadId={(threadIdValue >= 0 ? threadIdValue.ToString(CultureInfo.InvariantCulture) : "Unavailable")}",
-                FormatPayloadValue(payload, "OldThreadState"),
-                FormatPayloadValue(payload, "OldThreadWaitReason"),
-                FormatPayloadValue(payload, "OldThreadWaitMode"),
-                FormatPayloadValue(payload, "NewThreadWaitTime"),
+                FormatPayloadValue(data, "OldThreadState"),
+                FormatPayloadValue(data, "OldThreadWaitReason"),
+                FormatPayloadValue(data, "OldThreadWaitMode"),
+                FormatPayloadValue(data, "NewThreadWaitTime"),
                 readyToRunDetail);
 
             EventReceived?.Invoke(new DiagnosticEvent(
@@ -418,6 +420,45 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
         return payload;
     }
 
+    private static uint? GetPayloadUInt32(TraceEvent data, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            var value = GetPayloadValue(data, name);
+            if (value is null)
+                continue;
+
+            try
+            {
+                var converted = Convert.ToUInt32(value, CultureInfo.InvariantCulture);
+                if (converted > 0)
+                    return converted;
+            }
+            catch (Exception ex) when (ex is FormatException or InvalidCastException or OverflowException)
+            {
+            }
+        }
+
+        return null;
+    }
+
+    private static string FormatPayloadValue(TraceEvent data, string name)
+        => GetPayloadValue(data, name) is object value
+            ? $"{name}={Convert.ToString(value, CultureInfo.InvariantCulture) ?? "Unavailable"}"
+            : $"{name}=Unavailable";
+
+    private static object? GetPayloadValue(TraceEvent data, string name)
+    {
+        var names = data.PayloadNames;
+        for (var i = 0; i < names.Length; i++)
+        {
+            if (names[i].Equals(name, StringComparison.OrdinalIgnoreCase))
+                return data.PayloadValue(i);
+        }
+
+        return null;
+    }
+
     private static uint? GetPayloadUInt32(IReadOnlyDictionary<string, object?> payload, params string[] names)
     {
         foreach (var name in names)
@@ -530,7 +571,7 @@ public static class EtwEventFilter
 
         if (providerName.Contains("DxgKrnl", StringComparison.OrdinalIgnoreCase))
         {
-            if (processId != targetProcessId && processId != 4)
+            if (processId != targetProcessId && processId != 4u)
                 return false;
 
             return ContainsAny(eventAndTask,
