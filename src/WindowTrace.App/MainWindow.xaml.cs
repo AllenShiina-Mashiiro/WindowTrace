@@ -29,6 +29,7 @@ public partial class MainWindow : Window
     private long _displayedEvents;
     private long _presentMonFrameCount;
     private long _gpuSampleCount;
+    private int _lastReportedEtwEventsLost = -1;
     private HwndSource? _windowSource;
     private const int InputMarkerHotKeyId = 0x5741;
     private const int WmHotKey = 0x0312;
@@ -51,7 +52,7 @@ public partial class MainWindow : Window
         {
             Interval = TimeSpan.FromMilliseconds(100)
         };
-        _sessionTimer.Tick += async (_, _) => await _sessions.CheckPostCaptureDeadlineAsync();
+        _sessionTimer.Tick += SessionTimer_Tick;
 
         EnvironmentText.Text =
             $"Environment: {RuntimeInformation.OSDescription} | " +
@@ -374,6 +375,25 @@ public partial class MainWindow : Window
             _etwCollector = collector;
             var enabled = collector.ProviderStatuses.Count(p => p.Status == "Enabled");
             FooterText.Text = $"ETW realtime consumer started. Enabled providers: {enabled}/{collector.ProviderStatuses.Count}. Kernel scheduling events may require administrator privileges.";
+
+            foreach (var provider in collector.ProviderStatuses)
+            {
+                var qpc = _clock.GetTimestamp();
+                _sessions.PublishTelemetry(new DiagnosticEvent(
+                    Guid.NewGuid(),
+                    "EtwProviderCapability",
+                    "ETW",
+                    qpc,
+                    _clock.Frequency,
+                    _clock.ToUtc(qpc),
+                    _clock.ElapsedMilliseconds(_clock.AnchorTimestamp, qpc),
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    $"Provider={provider.ProviderName};Status={provider.Status};Details={provider.Details}"));
+            }
         }
         catch (Exception ex)
         {
@@ -445,6 +465,35 @@ public partial class MainWindow : Window
             $"{(string.IsNullOrWhiteSpace(snapshot.WindowTitle) ? "(untitled window)" : snapshot.WindowTitle)}";
     }
 
+    private async void SessionTimer_Tick(object? sender, EventArgs e)
+    {
+        await _sessions.CheckPostCaptureDeadlineAsync();
+
+        if (_etwCollector is null)
+            return;
+
+        var lost = _etwCollector.EventsLost;
+        if (lost >= 0 && lost != _lastReportedEtwEventsLost)
+        {
+            _lastReportedEtwEventsLost = lost;
+            var qpc = _clock.GetTimestamp();
+            _sessions.PublishTelemetry(new DiagnosticEvent(
+                Guid.NewGuid(),
+                "EtwEventsLostCounter",
+                "ETW",
+                qpc,
+                _clock.Frequency,
+                _clock.ToUtc(qpc),
+                _clock.ElapsedMilliseconds(_clock.AnchorTimestamp, qpc),
+                null,
+                null,
+                null,
+                null,
+                null,
+                $"EventsLost={lost}"));
+        }
+    }
+
     private void OnEtwEvent(DiagnosticEvent item)
     {
         _sessions.PublishTelemetry(item);
@@ -476,10 +525,23 @@ public partial class MainWindow : Window
         if (_isClosing)
             return;
 
-        Dispatcher.InvokeAsync(() =>
-        {
-            FooterText.Text = message;
-        });
+        var qpc = _clock.GetTimestamp();
+        _sessions.PublishTelemetry(new DiagnosticEvent(
+            Guid.NewGuid(),
+            "CollectorWarning",
+            "WindowTrace",
+            qpc,
+            _clock.Frequency,
+            _clock.ToUtc(qpc),
+            _clock.ElapsedMilliseconds(_clock.AnchorTimestamp, qpc),
+            null,
+            null,
+            null,
+            null,
+            null,
+            message));
+
+        Dispatcher.InvokeAsync(() => FooterText.Text = message);
     }
 
     private void OnSessionStatusChanged(string message)
@@ -498,6 +560,22 @@ public partial class MainWindow : Window
     {
         if (_isClosing)
             return;
+
+        var qpc = _clock.GetTimestamp();
+        _sessions.PublishTelemetry(new DiagnosticEvent(
+            Guid.NewGuid(),
+            "WindowMonitorWarning",
+            "WinEvent",
+            qpc,
+            _clock.Frequency,
+            _clock.ToUtc(qpc),
+            _clock.ElapsedMilliseconds(_clock.AnchorTimestamp, qpc),
+            null,
+            null,
+            null,
+            null,
+            null,
+            message));
 
         Dispatcher.InvokeAsync(() => FooterText.Text = $"Window monitor warning: {message}");
     }
