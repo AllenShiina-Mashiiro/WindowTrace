@@ -56,6 +56,18 @@ public sealed class DiagnosticSessionManager
     public string? LastCompletedSessionPath { get; private set; }
     public string? LastCompletedReportPath { get; private set; }
     public bool IsSessionActive { get { lock (_gate) return _writer is not null; } }
+    public double PreRollCoverageMilliseconds
+    {
+        get
+        {
+            var events = _buffer.Snapshot();
+            if (events.Count == 0)
+                return 0;
+
+            var earliestQpc = events.Min(item => item.QpcTimestamp);
+            return Math.Clamp(_clock.ElapsedMilliseconds(earliestQpc, _clock.GetTimestamp()), 0d, 3000d);
+        }
+    }
     public uint? TargetProcessId { get { lock (_gate) return _targetProcessId; } }
     public string? TargetProcessName { get { lock (_gate) return _targetProcessName; } }
 
