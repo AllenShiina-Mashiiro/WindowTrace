@@ -35,6 +35,7 @@ public partial class MainWindow : Window
     private long _presentMonFrameCount;
     private long _gpuSampleCount;
     private int _lastReportedEtwEventsLost = -1;
+    private long _lastReportedWindowEventDrops;
     private HwndSource? _windowSource;
     private const int InputMarkerHotKeyId = 0x5741;
     private const int WmHotKey = 0x0312;
@@ -143,6 +144,7 @@ public partial class MainWindow : Window
             Events.Clear();
             EventCountText.Text = "0";
             _lastReportedEtwEventsLost = -1;
+            _lastReportedWindowEventDrops = _windowMonitor.DroppedPendingEvents;
             _sessions.SetEtwEventsLost(-1);
 
             _windowMonitor.Start();
@@ -650,6 +652,27 @@ public partial class MainWindow : Window
     private async void SessionTimer_Tick(object? sender, EventArgs e)
     {
         await _sessions.CheckPostCaptureDeadlineAsync();
+
+        var windowDrops = _windowMonitor.DroppedPendingEvents;
+        if (windowDrops != _lastReportedWindowEventDrops)
+        {
+            _lastReportedWindowEventDrops = windowDrops;
+            var windowQpc = _clock.GetTimestamp();
+            _sessions.PublishTelemetry(new DiagnosticEvent(
+                Guid.NewGuid(),
+                "WindowMonitorQueueDrops",
+                "WinEvent",
+                windowQpc,
+                _clock.Frequency,
+                _clock.ToUtc(windowQpc),
+                _clock.ElapsedMilliseconds(_clock.AnchorTimestamp, windowQpc),
+                null,
+                null,
+                null,
+                null,
+                null,
+                $"TotalDroppedPendingEvents={windowDrops};QueueCapacity=16384;DropPolicy=RejectNewest"));
+        }
 
         if (_etwCollector is null)
             return;
