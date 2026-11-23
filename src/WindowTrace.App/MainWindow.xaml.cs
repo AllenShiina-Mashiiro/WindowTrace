@@ -142,6 +142,7 @@ public partial class MainWindow : Window
             Events.Clear();
             EventCountText.Text = "0";
             _lastReportedEtwEventsLost = -1;
+            _sessions.SetEtwEventsLost(-1);
 
             _windowMonitor.Start();
             _isMonitoring = true;
