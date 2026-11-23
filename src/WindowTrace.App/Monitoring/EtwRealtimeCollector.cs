@@ -144,6 +144,7 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
             var threadId = data.ThreadID >= 0 ? (uint?)data.ThreadID : null;
             var providerName = data.ProviderName ?? "UnknownProvider";
             var eventName = data.EventName ?? "UnknownEvent";
+            var details = BuildPrivacySafeDetails(providerName, eventName, data);
 
             EventReceived?.Invoke(new DiagnosticEvent(
                 Guid.NewGuid(),
@@ -158,12 +159,23 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
                 null,
                 data.ProcessName,
                 null,
-                data.ToString()));
+                details));
         }
         catch (Exception ex)
         {
             CollectorWarning?.Invoke($"ETW event normalization failed: {ex.Message}");
         }
+    }
+
+    private static string BuildPrivacySafeDetails(string providerName, string eventName, TraceEvent data)
+    {
+        if (providerName.Contains("Win32k", StringComparison.OrdinalIgnoreCase))
+            return "PayloadOmittedByPrivacyPolicy;Win32k timing and event metadata only.";
+
+        if (eventName.Contains("Process", StringComparison.OrdinalIgnoreCase))
+            return "PayloadOmittedToAvoidCommandLineCapture;Process event metadata only.";
+
+        return data.ToString();
     }
 
     public async ValueTask DisposeAsync()
