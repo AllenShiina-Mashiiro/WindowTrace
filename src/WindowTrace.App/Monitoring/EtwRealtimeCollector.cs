@@ -37,6 +37,9 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
     private readonly ConcurrentDictionary<uint, uint> _threadProcessIds = new();
     private readonly ConcurrentDictionary<uint, long> _targetThreadReadyQpc = new();
     private readonly ConcurrentDictionary<uint, long> _targetThreadLastScheduledQpc = new();
+    // High-volume graphics and interrupt providers are sampled by event family so
+    // repeated scheduler/composition notifications cannot exhaust the session writer.
+    private readonly Dictionary<string, long> _lastPersistedEtwEventQpc = new(StringComparer.OrdinalIgnoreCase);
 
     public EtwRealtimeCollector(QpcClock clock, uint targetProcessId)
     {
@@ -195,8 +198,15 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
             if (!EtwEventFilter.ShouldPersist(providerName, eventName, data.TaskName ?? string.Empty, processId, TargetProcessId))
                 return;
 
+            var samplingIntervalMs = GetEtwSamplingIntervalMilliseconds(providerName, eventName, processId);
+            if (ShouldThrottleEtwEvent(providerName, eventName, qpc, samplingIntervalMs))
+                return;
+
             var payloadDetails = BuildPrivacySafeDetails(providerName, eventName);
-            var details = $"TimestampQuality=ETWQPC;EventId={data.ID};Task={data.TaskName};Opcode={data.OpcodeName};{payloadDetails}";
+            var samplingDetails = samplingIntervalMs > 0
+                ? $"ETWSamplingIntervalMs={samplingIntervalMs};"
+                : string.Empty;
+            var details = $"TimestampQuality=ETWQPC;EventId={data.ID};Task={data.TaskName};Opcode={data.OpcodeName};{samplingDetails}{payloadDetails}";
 
             EventReceived?.Invoke(new DiagnosticEvent(
                 Guid.NewGuid(),
@@ -411,6 +421,38 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
             $"ThreadMappingSource={mappingSource};ThreadProcessAssociation={mappingSource}"));
     }
 
+    private int GetEtwSamplingIntervalMilliseconds(string providerName, string eventName, uint? processId)
+    {
+        if (providerName.Contains("Dwm-Core", StringComparison.OrdinalIgnoreCase))
+            return 100;
+
+        if (providerName.Contains("DxgKrnl", StringComparison.OrdinalIgnoreCase) && processId == 4u)
+            return 100;
+
+        if (providerName.Equals("NT Kernel Logger", StringComparison.OrdinalIgnoreCase) &&
+            (eventName.Contains("DPC", StringComparison.OrdinalIgnoreCase) ||
+             eventName.Contains("ISR", StringComparison.OrdinalIgnoreCase)))
+            return 5;
+
+        return 0;
+    }
+
+    private bool ShouldThrottleEtwEvent(string providerName, string eventName, long qpc, int intervalMs)
+    {
+        if (intervalMs <= 0)
+            return false;
+
+        var key = providerName + "|" + eventName;
+        var minimumTicks = Math.Max(1, (long)(_clock.Frequency * intervalMs / 1000d));
+        if (_lastPersistedEtwEventQpc.TryGetValue(key, out var previousQpc) &&
+            qpc >= previousQpc &&
+            qpc - previousQpc < minimumTicks)
+            return true;
+
+        _lastPersistedEtwEventQpc[key] = qpc;
+        return false;
+    }
+
     private static Dictionary<string, object?> ReadPayload(TraceEvent data)
     {
         var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
@@ -571,21 +613,24 @@ public static class EtwEventFilter
 
         if (providerName.Contains("DxgKrnl", StringComparison.OrdinalIgnoreCase))
         {
-            if (processId != targetProcessId && processId != 4u)
-                return false;
+            if (processId == targetProcessId)
+            {
+                return ContainsAny(eventAndTask,
+                    "QueuePacket",
+                    "DmaPacket",
+                    "UpdateContextRunningTime",
+                    "UpdateContextStatus",
+                    "SelectContext",
+                    "SignalSynchronizationObjectFromGpu",
+                    "WaitForSynchronizationObjectFromGpu",
+                    "VidSchiSignalSynchronizationObjectFromCpu",
+                    "SetInterruptTargetPresentId",
+                    "VSyncWaiterChange");
+            }
 
-            return ContainsAny(eventAndTask,
-                "QueuePacket",
-                "DmaPacket",
-                "UpdateContextRunningTime",
-                "UpdateContextStatus",
-                "SelectContext",
-                "SignalSynchronizationObjectFromGpu",
-                "WaitForSynchronizationObjectFromGpu",
-                "VidSchiSignalSynchronizationObjectFromCpu",
-                "SetInterruptTargetPresentId",
-                "VSyncWaiterChange",
-                "VSyncDPC");
+            // Kernel-owned DxgKrnl events can be extremely frequent. Keep only
+            // VSync DPC metadata here; system DPC/ISR timing is captured separately.
+            return processId == 4u && ContainsAny(eventAndTask, "VSyncDPC");
         }
 
         if (providerName.Contains("Dwm-Core", StringComparison.OrdinalIgnoreCase))
