@@ -112,6 +112,10 @@ The Windows GitHub Actions workflow also publishes a self-contained `win-x64` ZI
 
 PresentMon 2.x is an optional external dependency and is not bundled in this repository. Obtain it from the official [PresentMon project](https://github.com/GameTechDev/PresentMon).
 
+## Permissions
+
+PresentMon real-time tracing can fail with access denied unless the current user has the required performance-tracing permissions or the application is run elevated. WindowTrace does not automatically request elevation, modify local group membership, or change system security settings. If PresentMon cannot start, its error is recorded and the other collectors continue where possible.
+
 ## Safety and diagnostic limitations
 
 - No kernel driver.
