@@ -28,6 +28,7 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
     private Task? _processingTask;
     private readonly List<EtwProviderStatus> _providerStatuses = [];
     private bool _disposed;
+    private int _eventsLost = -1;
 
     public EtwRealtimeCollector(QpcClock clock) => _clock = clock;
 
@@ -35,7 +36,14 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
     public event Action<string>? CollectorWarning;
 
     public IReadOnlyList<EtwProviderStatus> ProviderStatuses => _providerStatuses;
-    public int EventsLost { get; private set; }
+    public int EventsLost
+    {
+        get
+        {
+            try { return _session?.Source.EventsLost ?? _eventsLost; }
+            catch { return _eventsLost; }
+        }
+    }
     public bool IsRunning => _session is not null;
 
     public void Start()
@@ -47,7 +55,8 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
         var sessionName = $"WindowTrace-{Environment.ProcessId}-{Guid.NewGuid():N}";
         var session = new TraceEventSession(sessionName)
         {
-            StopOnDispose = true
+            StopOnDispose = true,
+            BufferSizeMB = 64
         };
 
         _providerStatuses.Clear();
@@ -179,7 +188,7 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
                 catch (Exception ex) { CollectorWarning?.Invoke($"ETW consumer stopped with an error: {ex.Message}"); }
             }
 
-            try { EventsLost = session.Source.EventsLost; } catch { EventsLost = -1; }
+            try { _eventsLost = session.Source.EventsLost; } catch { _eventsLost = -1; }
             session.Dispose();
         }
 
