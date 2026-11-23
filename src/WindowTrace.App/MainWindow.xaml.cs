@@ -156,6 +156,7 @@ public partial class MainWindow : Window
             _lastReportedWindowEventDrops = _windowMonitor.DroppedPendingEvents;
             _sessions.SetEtwEventsLost(-1);
             _sessions.SetEtwTimestampFallbackCount(0);
+            _sessions.SetEtwThrottledEventCount(0);
 
             _windowMonitor.Start();
             _isMonitoring = true;
@@ -710,6 +711,7 @@ public partial class MainWindow : Window
         {
             _sessions.SetEtwEventsLost(collector.EventsLost);
             _sessions.SetEtwTimestampFallbackCount(collector.TimestampFallbackCount);
+            _sessions.SetEtwThrottledEventCount(collector.ThrottledEventCount);
             FooterText.Text = collector.EventsLost >= 0
                 ? $"ETW collector stopped. Events lost: {collector.EventsLost}."
                 : "ETW collector stopped. Event-loss count unavailable.";
@@ -861,7 +863,10 @@ public partial class MainWindow : Window
     private async void SessionTimer_Tick(object? sender, EventArgs e)
     {
         if (_etwCollector is not null)
+        {
             _sessions.SetEtwTimestampFallbackCount(_etwCollector.TimestampFallbackCount);
+            _sessions.SetEtwThrottledEventCount(_etwCollector.ThrottledEventCount);
+        }
 
         await _sessions.CheckPostCaptureDeadlineAsync();
         UpdateCaptureReadinessStatus();
