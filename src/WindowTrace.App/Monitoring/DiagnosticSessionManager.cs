@@ -15,8 +15,8 @@ public enum DiagnosticSessionState
 
 /// <summary>
 /// Creates a diagnostic session when the selected target process loses foreground.
-/// It snapshots the preceding three seconds and captures through five seconds after
-/// the target returns to the foreground. All sources can publish into the same buffer.
+/// It snapshots the preceding three seconds and adaptively captures at least 1.5 seconds
+/// after the target returns to the foreground, with a 3-second hard maximum.
 /// </summary>
 public sealed class DiagnosticSessionManager
 {
