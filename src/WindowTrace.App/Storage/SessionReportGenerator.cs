@@ -117,7 +117,7 @@ public static class SessionReportGenerator
 
         report.AppendLine("### Display adapters and drivers");
         report.AppendLine();
-        if (metadata?.DisplayAdapters.Count > 0)
+        if (metadata is not null && metadata.DisplayAdapters.Count > 0)
         {
             report.AppendLine("| Adapter | Driver version | Driver date | Provider |");
             report.AppendLine("|---|---|---|---|");
