@@ -120,7 +120,7 @@ public partial class MainWindow : Window
                 null,
                 _sessions.TargetProcessName,
                 null,
-                $"TestPair={markerPair};MarkerPhase={markerPhase};Explicit Ctrl+Alt+F12 marker. The chord is consumed; no key contents or other keyboard events were collected.");
+                $"TestPair={markerPair};MarkerPhase={markerPhase};TimestampQuality=HotKeyMessageReceiptQPC;Explicit Ctrl+Alt+F12 marker. The chord is consumed; no key contents or other keyboard events were collected.");
 
             _sessions.PublishTelemetry(item);
             DisplayEvent(item);
