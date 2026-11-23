@@ -17,6 +17,7 @@ public sealed record SessionQualityReport(
     int EventBufferCapacity,
     long BufferEvictionsAtSessionStart,
     long BufferEvictionsAtFinalization,
+    int? EtwEventsLostAtFinalization,
     long WriterQueueDroppedRecords,
     long FileBytesWritten,
     long FileMaximumBytes,
