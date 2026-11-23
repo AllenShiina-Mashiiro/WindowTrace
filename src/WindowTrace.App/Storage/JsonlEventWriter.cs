@@ -98,7 +98,7 @@ public sealed class JsonlEventWriter : IAsyncDisposable
                     }
 
                     var json = JsonSerializer.Serialize(item, JsonOptions);
-                    var lineBytes = Encoding.UTF8.GetByteCount(json) + 1;
+                    var lineBytes = Encoding.UTF8.GetByteCount(json) + Encoding.UTF8.GetByteCount(Environment.NewLine);
                     if (Interlocked.Read(ref _bytesWritten) + lineBytes > MaxBytes)
                     {
                         Interlocked.Exchange(ref _limitReached, 1);
