@@ -28,7 +28,7 @@ Every session records Windows version/build, DisplayVersion, UBR (when readable)
 - WPF monitoring interface.
 - Foreground-window changes through `SetWinEventHook(EVENT_SYSTEM_FOREGROUND)`, plus minimize/restore events through `EVENT_SYSTEM_MINIMIZESTART` and `EVENT_SYSTEM_MINIMIZEEND`, and separate `EVENT_OBJECT_FOCUS` metadata events. Object focus is not treated as proof that the game's input thread has resumed.
 - HWND, PID, TID, process name, window title and minimized state; `GetGUIThreadInfo` focused child HWND and GUI flags are recorded separately from the foreground HWND.
-- QPC timestamp and UTC conversion.
+- QPC timestamp and UTC conversion. WinEvent callback-receipt QPC is kept distinct from the raw 32-bit WinEvent `eventTime` value; the latter is recorded as `WinEventSystemTimeMs` and is not treated as a QPC timestamp. ETW events label native event QPC separately from collector-receipt fallback, and the quality report counts fallbacks.
 - Explicit target-process selection from a refreshed list of visible top-level application windows; selected HWND/PID is revalidated before collectors start.
 - Diagnostic session state transitions:
   - target loses foreground: session starts;
@@ -44,7 +44,8 @@ Every session records Windows version/build, DisplayVersion, UBR (when readable)
 - Optional PresentMon 2.x child process, with per-swap-chain rolling FPS, average/p95/min/max frame time, frame-time variance and standard deviation derived from frame intervals. Per-frame GPU Busy/Wait and Present Mode fields are preserved. The process is filtered to the selected PID and started with `--qpc_time`, `--output_stdout`, `--no_console_stats` and `--no_track_input`.
 - Optional timestamp-only input marker. It is off by default and registers only Ctrl+Alt+F12 when explicitly enabled.
 - JSONL event storage, session environment metadata, session quality report and CSV export.
-- Bounded WinEvent pending queue (16,384 events, reject-newest on saturation) with dropped-event counts emitted into the diagnostic stream; bounded session writer queue, buffer eviction accounting and a 256 MiB per-session JSONL file cap.
+- Bounded WinEvent pending queue (16,384 events, reject-newest on saturation) with dropped-event counts emitted into the diagnostic stream. The JSONL writer has a separate bounded priority queue and a reserved file-byte budget for focus/session markers, manual markers and collector-health records; high-volume telemetry cannot consume that reserved capacity.
+- Pre-roll snapshot sorting and replay, plus session metadata I/O, run outside the shared telemetry lock. The quality file distinguishes pre-roll events selected, accepted into the writer queue, actually written, and rejected.
 - ETW generic events pass through a conservative provider/event allow-list: target-process Win32k message-pump observations, selected DxgKrnl GPU scheduling events, DWM frame scheduling, target-process DXGI Present events, target-process priority changes, selected power-latency events and system DPC/ISR events. Thread lifecycle, target ReadyThread and target context-switch observations use their dedicated paths. Full ETW payload text is not serialized; event metadata is retained to reduce allocation and disk pressure.
 - Core unit tests and Windows GitHub Actions build/test workflow.
 
@@ -99,7 +100,7 @@ A completed session normally produces:
 - `windowtrace-session-<timestamp>.quality.json` — pre-roll coverage, buffer evictions, ETW event-loss count, distinct queue-overflow/file-cap/writer-error drop counts, file cap and writer errors.
 - Optional CSV export chosen by the user.
 
-The JSONL event stream preserves source and QPC fields. Generic ETW provider payloads are intentionally omitted; the collector stores selected event metadata only. The quality report separates actual writer-queue overflow from records rejected after the file-size cap and from writer-error losses. Event arrival order can differ between independent collectors; sort or correlate by `QpcTimestamp`, not by file line order.
+The JSONL event stream preserves source and QPC fields. Generic ETW provider payloads are intentionally omitted; the collector stores selected event metadata only. The quality report separates normal and critical queue overflow, file-cap drops and writer-error losses. It also reports pre-roll events selected/queued/written/rejected and ETW receipt-time fallback counts. Event arrival order can differ between independent collectors; sort or correlate by `QpcTimestamp`, not by file line order.
 
 ## Build and test
 
