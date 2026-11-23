@@ -375,7 +375,7 @@ public sealed class DiagnosticSessionManager
 
         try
         {
-            LastCompletedReportPath = await SessionReportGenerator.WriteAsync(writer.FilePath);
+            LastCompletedReportPath = await Task.Run(() => SessionReportGenerator.WriteAsync(writer.FilePath));
             StatusChanged?.Invoke($"Human-readable diagnostic report saved: {LastCompletedReportPath}");
         }
         catch (Exception ex)
