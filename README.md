@@ -73,7 +73,7 @@ Starting monitoring before picking the target is recommended. If a target was se
 
 The checkbox is off by default. When enabled, WindowTrace registers Ctrl+Alt+F12 as a system hotkey and consumes that exact chord as a timestamp marker. It does not inspect other keyboard events and does not record key contents.
 
-**This marker is not a measurement of a normal key reaching the game.** The registered chord is reserved and may not be delivered to the game. It is only a manual time marker for correlating an operator action with later frame/ETW observations.
+**This marker is not a measurement of a normal key reaching the game.** The registered chord is reserved and may not be delivered to the game. For an approximate manual response interval, press Ctrl+Alt+F12 immediately before the test key and press it again as soon as the game visibly responds. The report pairs these markers and shows the elapsed time. This includes human timing between the marker and the actual key press/visible response; it is not exact keyboard latency or proof that a key was delivered. The marker chord is consumed.
 
 ### ETW permissions
 
