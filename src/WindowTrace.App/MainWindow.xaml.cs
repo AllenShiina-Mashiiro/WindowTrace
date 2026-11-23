@@ -489,35 +489,48 @@ public partial class MainWindow : Window
 
     private async Task StopEtwCollectorAsync()
     {
-        if (_etwCollector is null)
+        var collector = _etwCollector;
+        _etwCollector = null;
+        if (collector is null)
             return;
 
-        await _etwCollector.DisposeAsync();
-        _sessions.SetEtwEventsLost(_etwCollector.EventsLost);
-        FooterText.Text = _etwCollector.EventsLost >= 0
-            ? $"ETW collector stopped. Events lost: {_etwCollector.EventsLost}."
-            : "ETW collector stopped. Event-loss count unavailable.";
-        _etwCollector = null;
+        try
+        {
+            await collector.DisposeAsync();
+        }
+        finally
+        {
+            _sessions.SetEtwEventsLost(collector.EventsLost);
+            FooterText.Text = collector.EventsLost >= 0
+                ? $"ETW collector stopped. Events lost: {collector.EventsLost}."
+                : "ETW collector stopped. Event-loss count unavailable.";
+        }
     }
 
     private async Task StopTargetCollectorsAsync()
     {
-        if (_cpuSampler is not null)
+        var cpu = _cpuSampler;
+        _cpuSampler = null;
+        if (cpu is not null)
         {
-            await _cpuSampler.DisposeAsync();
-            _cpuSampler = null;
+            try { await cpu.DisposeAsync(); }
+            catch (Exception ex) { OnCollectorWarning($"CPU collector shutdown failed: {ex.Message}"); }
         }
 
-        if (_gpuSampler is not null)
+        var gpu = _gpuSampler;
+        _gpuSampler = null;
+        if (gpu is not null)
         {
-            await _gpuSampler.DisposeAsync();
-            _gpuSampler = null;
+            try { await gpu.DisposeAsync(); }
+            catch (Exception ex) { OnCollectorWarning($"GPU collector shutdown failed: {ex.Message}"); }
         }
 
-        if (_presentMon is not null)
+        var presentMon = _presentMon;
+        _presentMon = null;
+        if (presentMon is not null)
         {
-            await _presentMon.DisposeAsync();
-            _presentMon = null;
+            try { await presentMon.DisposeAsync(); }
+            catch (Exception ex) { OnCollectorWarning($"PresentMon shutdown failed: {ex.Message}"); }
         }
     }
 
@@ -784,16 +797,25 @@ public partial class MainWindow : Window
         _windowMonitor.Stop();
         _sessionTimer.Stop();
 
-        AddSystemEvent("MonitoringStopped", "Window monitor stopped.");
+        var errors = new List<string>();
+        try { AddSystemEvent("MonitoringStopped", "Window monitor stopped."); }
+        catch (Exception ex) { errors.Add($"Stop marker: {ex.Message}"); }
 
-        await StopTargetCollectorsAsync();
+        try { await StopTargetCollectorsAsync(); }
+        catch (Exception ex) { errors.Add($"Target collectors: {ex.Message}"); }
 
-        await StopEtwCollectorAsync();
-        await _sessions.StopAsync();
+        try { await StopEtwCollectorAsync(); }
+        catch (Exception ex) { errors.Add($"ETW collector: {ex.Message}"); }
+
+        try { await _sessions.StopAsync(); }
+        catch (Exception ex) { errors.Add($"Session finalization: {ex.Message}"); }
 
         StartButton.IsEnabled = true;
         StopButton.IsEnabled = false;
         StatusText.Text = "Monitoring stopped";
+        FooterText.Text = errors.Count == 0
+            ? "Monitoring stopped and active collectors were finalized."
+            : $"Monitoring stopped with warnings: {string.Join(" | ", errors)}";
     }
 
     private async void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
