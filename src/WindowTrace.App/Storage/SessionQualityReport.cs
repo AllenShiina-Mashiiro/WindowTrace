@@ -28,6 +28,7 @@ public sealed record SessionQualityReport(
     public long QueueOverflowDroppedRecords { get; init; }
     public long FileLimitDroppedRecords { get; init; }
     public long WriterErrorDroppedRecords { get; init; }
+    public long EtwTimestampFallbackCount { get; init; }
 
     public static async Task WriteAsync(string path, SessionQualityReport report)
     {
