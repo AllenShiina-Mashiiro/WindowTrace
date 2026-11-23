@@ -27,7 +27,7 @@ Do not treat the OS display version as the only variable. The development comput
 3. Start monitoring with **2. Start monitoring** and verify the UI shows an automatic rolling pre-roll warm-up indicator, then changes to **Ready to reproduce** without requiring the user to time it.
 4. Once the UI says **Ready to reproduce**, switch to the game if needed, then switch to another application and confirm a session starts. The UI must own the 3-second pre-roll timing.
 5. Keep the game in the background for at least 10 seconds.
-6. Return to the game. The session should finish automatically after at least 1.5 seconds once post-focus CPU and GPU samples have arrived, with a 3-second maximum fallback.
+6. Return to the game. The session should finish automatically after at least 1.5 seconds once a post-focus CPU sample and either GPU PDH or PresentMon frame evidence have arrived, with a 3-second maximum fallback.
 7. Confirm the session finalizes and produces JSONL, session metadata and quality JSON files.
 8. Repeat at least 20 focus-loss/focus-gain cycles.
 9. Close/relaunch the game between tests and verify that stale HWND selections are rejected and the window list can be refreshed.
@@ -40,7 +40,7 @@ Inspect QPC values, not only wall-clock display strings.
 - The first session marker must be near the target focus-loss event.
 - Pre-roll coverage should be close to 3000 ms. Any shortfall must be visible in the quality report.
 - Background events must continue to be recorded.
-- The completion marker should be no earlier than 1500 ms after the most recent target focus-gain event. It should occur as soon as both post-focus CPU and GPU samples are available, or no later than 3000 ms if either sample is unavailable.
+- The completion marker should be no earlier than 1500 ms after the most recent target focus-gain event. It should occur as soon as a post-focus CPU sample and either GPU PDH or PresentMon frame evidence are available, or no later than 3000 ms if either sample is unavailable.
 - If the target leaves focus again during post-capture, the adaptive completion window must be cancelled; the session continues in background and starts a fresh 1.5–3-second window on the next focus return.
 - Events from different collectors must be correlated by QPC timestamp; JSONL line order is not guaranteed to be global event-time order.
 
