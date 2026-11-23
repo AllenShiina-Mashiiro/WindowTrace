@@ -846,7 +846,7 @@ public partial class MainWindow : Window
             StatusText.Text = "Ready to reproduce";
             FooterText.Text =
                 $"Capture buffer ready for {_sessions.TargetProcessName}. Reproduce the issue now: Alt+Tab away, then return to the game. " +
-                "After return, WindowTrace captures at least 1.5 seconds and finishes when CPU and GPU samples arrive (maximum 3 seconds).";
+                "After return, WindowTrace captures at least 1.5 seconds and finishes when CPU plus GPU or PresentMon evidence arrives (maximum 3 seconds).";
         }
         else
         {
