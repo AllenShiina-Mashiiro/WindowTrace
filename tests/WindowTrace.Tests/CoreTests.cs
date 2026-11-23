@@ -187,6 +187,65 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public async Task SessionReportGenerator_CountsFullPostFocusEtwWindowIndependentOfDetailLimit()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "WindowTrace.Tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var jsonlPath = Path.Combine(directory, "etw-window.jsonl");
+        var clock = new QpcClock();
+        var sessionId = Guid.NewGuid();
+        var focusQpc = clock.GetTimestamp();
+
+        try
+        {
+            var events = new List<DiagnosticEvent>
+            {
+                new(Guid.NewGuid(), "FocusGained", "WindowTrace", focusQpc, clock.Frequency,
+                    clock.ToUtc(focusQpc), 0, 21948, null, null, "TestGame", null,
+                    "Target regained foreground.", sessionId)
+            };
+
+            for (var i = 0; i < 97; i++)
+            {
+                var qpc = focusQpc + (long)(clock.Frequency * (0.001d + i * 0.01d));
+                events.Add(new DiagnosticEvent(
+                    Guid.NewGuid(), $"Etw:Win32kEvent{i}", "Microsoft-Windows-Win32k",
+                    qpc, clock.Frequency, clock.ToUtc(qpc), i * 10,
+                    21948, 100u + (uint)i, null, "TestGame", null,
+                    "TimestampQuality=ETWQPC", sessionId));
+            }
+
+            // An event outside the requested 1.5-second window must not affect its count.
+            var outsideQpc = focusQpc + (long)(clock.Frequency * 1.6d);
+            events.Add(new DiagnosticEvent(
+                Guid.NewGuid(), "Etw:OutsideWindow", "Microsoft-Windows-Win32k",
+                outsideQpc, clock.Frequency, clock.ToUtc(outsideQpc), 1600,
+                21948, 999u, null, "TestGame", null, "Outside interval", sessionId));
+
+            await File.WriteAllLinesAsync(jsonlPath,
+                events.Select(item => System.Text.Json.JsonSerializer.Serialize(item)));
+
+            var report30Path = await SessionReportGenerator.WriteAsync(
+                jsonlPath, maximumPostFocusEtwRows: 30);
+            var report30 = await File.ReadAllTextAsync(report30Path);
+            Assert.Contains("ETW events in interval (all providers): 97", report30);
+            Assert.Contains("Win32k ETW events in interval: 97", report30);
+            Assert.Contains("ETW event detail limit reached: 67 additional events", report30);
+
+            var report300Path = await SessionReportGenerator.WriteAsync(
+                jsonlPath, maximumPostFocusEtwRows: 300);
+            var report300 = await File.ReadAllTextAsync(report300Path);
+            Assert.Contains("ETW events in interval (all providers): 97", report300);
+            Assert.Contains("Win32k ETW events in interval: 97", report300);
+            Assert.DoesNotContain("ETW event detail limit reached:", report300);
+        }
+        finally
+        {
+            try { Directory.Delete(directory, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
     public void FrameMetricsAggregator_ComputesRollingFpsAndFrameTimeVariance()
     {
         var clock = new QpcClock();
