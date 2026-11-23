@@ -40,6 +40,62 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public async Task SessionReportGenerator_WritesEnvironmentQualityAndTimelineSummary()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "WindowTrace.Tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var jsonlPath = Path.Combine(directory, "session.jsonl");
+        var clock = new QpcClock();
+        var sessionId = Guid.NewGuid();
+        var qpc = clock.GetTimestamp();
+
+        try
+        {
+            var events = new[]
+            {
+                new DiagnosticEvent(Guid.NewGuid(), "FocusLost", "WindowTrace", qpc, clock.Frequency,
+                    clock.ToUtc(qpc), 0, 4242, null, null, "TestGame", null, "Target left foreground.", sessionId),
+                new DiagnosticEvent(Guid.NewGuid(), "FocusGained", "WindowTrace", qpc + clock.Frequency,
+                    clock.Frequency, clock.ToUtc(qpc + clock.Frequency), 1000, 4242, null, null,
+                    "TestGame", null, "Target regained foreground.", sessionId),
+                new DiagnosticEvent(Guid.NewGuid(), "RenderingSummary", "PresentMonMetrics",
+                    qpc + clock.Frequency, clock.Frequency, clock.ToUtc(qpc + clock.Frequency), 1000,
+                    4242, null, null, "TestGame", null, "FPS=60.00;FrameTimeVarianceMs2=0.1000", sessionId)
+            };
+            await File.WriteAllLinesAsync(jsonlPath, events.Select(System.Text.Json.JsonSerializer.Serialize));
+
+            var metadata = new SessionMetadata(
+                sessionId, clock.ToUtc(qpc), "Windows 11", "10.0.26200", 26200,
+                "25H2", "26200", 1, "Professional", ".NET 10", "X64", clock.Frequency,
+                4242, "TestGame", "Test CPU", "Test Identifier", 16, 16UL * 1024 * 1024 * 1024,
+                "Test Manufacturer", "Test System", "Test Board", "Test BIOS", "2026-01-01",
+                Array.Empty<DisplayAdapterMetadata>(), "0.1.0");
+            var quality = new SessionQualityReport(
+                sessionId, clock.ToUtc(qpc + clock.Frequency), "Test", 4242, "TestGame",
+                qpc, qpc + clock.Frequency, 3000, 2900, 10, 50000, 0, 0, 0,
+                0, 1024, 256L * 1024 * 1024, false, null);
+
+            await using (var metadataStream = File.Create(Path.ChangeExtension(jsonlPath, ".session.json")))
+                await System.Text.Json.JsonSerializer.SerializeAsync(metadataStream, metadata);
+            await SessionQualityReport.WriteAsync(Path.ChangeExtension(jsonlPath, ".quality.json"), quality);
+
+            var reportPath = await SessionReportGenerator.WriteAsync(jsonlPath);
+            var report = await File.ReadAllTextAsync(reportPath);
+
+            Assert.Contains("WindowTrace diagnostic report", report);
+            Assert.Contains("25H2", report);
+            Assert.Contains("FocusLost", report);
+            Assert.Contains("Rendering summaries", report);
+            Assert.Contains("ETW events lost", report);
+            Assert.Contains("does not establish causation", report);
+        }
+        finally
+        {
+            try { Directory.Delete(directory, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
     public void FrameMetricsAggregator_ComputesRollingFpsAndFrameTimeVariance()
     {
         var clock = new QpcClock();
