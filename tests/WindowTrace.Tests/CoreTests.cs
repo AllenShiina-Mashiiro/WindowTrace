@@ -35,6 +35,8 @@ public sealed class CoreTests
         Assert.True(second > first);
         Assert.True(clock.Frequency > 0);
         Assert.True(clock.ElapsedMilliseconds(first, second) > 0);
+        Assert.True(clock.ToUtc(second) > clock.ToUtc(first));
+        Assert.NotEqual(DateTimeOffset.MinValue, clock.AnchorUtc);
     }
 
     [Fact]
