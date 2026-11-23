@@ -34,6 +34,7 @@ public sealed class DiagnosticSessionManager
     private long? _postCaptureStartedQpc;
     private bool _postFocusCpuSampleSeen;
     private bool _postFocusGpuSampleSeen;
+    private bool _postFocusFrameSampleSeen;
     private long _sessionStartQpc;
     private double _actualPreRollMs;
     private int _preRollEventCount;
@@ -137,8 +138,11 @@ public sealed class DiagnosticSessionManager
                 {
                     if (item.EventType == "CpuSample")
                         _postFocusCpuSampleSeen = true;
-                    else if (item.EventType == "GpuPdhSample")
+                    else if (item.EventType == "GpuPdhSample" &&
+                             !item.Details.Contains("No GPU counter instances returned valid data", StringComparison.OrdinalIgnoreCase))
                         _postFocusGpuSampleSeen = true;
+                    else if (item.EventType is "PresentMonFrame" or "RenderingSummary")
+                        _postFocusFrameSampleSeen = true;
                 }
             }
         }
@@ -172,6 +176,7 @@ public sealed class DiagnosticSessionManager
                         _postCaptureMaximumQpc = item.QpcTimestamp + (long)(_clock.Frequency * 3d);
                         _postFocusCpuSampleSeen = false;
                         _postFocusGpuSampleSeen = false;
+                        _postFocusFrameSampleSeen = false;
                         State = DiagnosticSessionState.FocusGainedPostCapture;
                         WriteSessionMarkerLocked("FocusGained", item.QpcTimestamp,
                             "Target regained foreground. Adaptive post-focus capture: minimum 1500 ms; finish early after CPU and GPU samples arrive; maximum 3000 ms.");
@@ -184,6 +189,7 @@ public sealed class DiagnosticSessionManager
                         _postCaptureStartedQpc = null;
                         _postFocusCpuSampleSeen = false;
                         _postFocusGpuSampleSeen = false;
+                        _postFocusFrameSampleSeen = false;
                         State = DiagnosticSessionState.Background;
                         WriteSessionMarkerLocked("FocusLostAgain", item.QpcTimestamp, "Target left foreground again before post-capture completed.");
                         status = "Target left foreground again during post-capture; session remains active.";
@@ -231,6 +237,7 @@ public sealed class DiagnosticSessionManager
         _postCaptureStartedQpc = null;
         _postFocusCpuSampleSeen = false;
         _postFocusGpuSampleSeen = false;
+        _postFocusFrameSampleSeen = false;
         State = DiagnosticSessionState.FocusLost;
 
         var preRollStart = focusLostQpc - (long)(_clock.Frequency * 3d);
@@ -313,7 +320,8 @@ public sealed class DiagnosticSessionManager
             if (nowQpc < minimumQpc)
                 return;
 
-            var evidenceReady = _postFocusCpuSampleSeen && _postFocusGpuSampleSeen;
+            var graphicsEvidenceReady = _postFocusGpuSampleSeen || _postFocusFrameSampleSeen;
+            var evidenceReady = _postFocusCpuSampleSeen && graphicsEvidenceReady;
             var maximumElapsed = nowQpc >= maximumQpc;
             if (!evidenceReady && !maximumElapsed)
                 return;
@@ -327,13 +335,16 @@ public sealed class DiagnosticSessionManager
                 completionQpc, _clock.Frequency, _clock.ToUtc(completionQpc),
                 _clock.ElapsedMilliseconds(_sessionStartQpc, completionQpc),
                 _targetProcessId, null, null, _targetProcessName, null,
-                $"CompletionReason={completionReason};PostFocusCpuSampleSeen={_postFocusCpuSampleSeen};PostFocusGpuSampleSeen={_postFocusGpuSampleSeen};MinimumCaptureMs=1500;MaximumCaptureMs=3000;WriterDropsBeforeFinalize={completedWriter.DroppedRecords}",
+                $"CompletionReason={completionReason};PostFocusCpuSampleSeen={_postFocusCpuSampleSeen};PostFocusGpuSampleSeen={_postFocusGpuSampleSeen};PostFocusFrameSampleSeen={_postFocusFrameSampleSeen};MinimumCaptureMs=1500;MaximumCaptureMs=3000;WriterDropsBeforeFinalize={completedWriter.DroppedRecords}",
                 _sessionId));
             LastCompletedSessionPath = completedWriter.FilePath;
             _writer = null;
             _postCaptureMinimumQpc = null;
             _postCaptureMaximumQpc = null;
             _postCaptureStartedQpc = null;
+            _postFocusCpuSampleSeen = false;
+            _postFocusGpuSampleSeen = false;
+            _postFocusFrameSampleSeen = false;
             State = DiagnosticSessionState.Completed;
         }
 
@@ -370,6 +381,7 @@ public sealed class DiagnosticSessionManager
             _postCaptureStartedQpc = null;
             _postFocusCpuSampleSeen = false;
             _postFocusGpuSampleSeen = false;
+            _postFocusFrameSampleSeen = false;
             if (writer is not null)
                 State = DiagnosticSessionState.Completed;
         }
