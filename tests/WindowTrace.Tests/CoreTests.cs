@@ -62,7 +62,7 @@ public sealed class CoreTests
                     qpc + clock.Frequency, clock.Frequency, clock.ToUtc(qpc + clock.Frequency), 1000,
                     4242, null, null, "TestGame", null, "FPS=60.00;FrameTimeVarianceMs2=0.1000", sessionId)
             };
-            await File.WriteAllLinesAsync(jsonlPath, events.Select(System.Text.Json.JsonSerializer.Serialize));
+            await File.WriteAllLinesAsync(jsonlPath, events.Select(item => System.Text.Json.JsonSerializer.Serialize(item)));
 
             var metadata = new SessionMetadata(
                 sessionId, clock.ToUtc(qpc), "Windows 11", "10.0.26200", 26200,
