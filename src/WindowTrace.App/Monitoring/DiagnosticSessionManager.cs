@@ -101,21 +101,20 @@ public sealed class DiagnosticSessionManager
 
     public void PublishTelemetry(DiagnosticEvent item)
     {
-        _buffer.Add(item);
-
         lock (_gate)
         {
+            _buffer.Add(item);
             _writer?.TryWrite(ForActiveSession(item));
         }
     }
 
     public void PublishForeground(DiagnosticEvent item, uint foregroundProcessId)
     {
-        _buffer.Add(item);
         string? status = null;
 
         lock (_gate)
         {
+            _buffer.Add(item);
             if (_targetProcessId is uint targetPid)
             {
                 var wasTargetForeground = _lastForegroundProcessId == targetPid;
@@ -169,8 +168,9 @@ public sealed class DiagnosticSessionManager
         var sessionId = Guid.NewGuid();
         var startedUtc = _clock.ToUtc(focusLostQpc);
         var stamp = startedUtc.ToString("yyyyMMdd-HHmmss-fff");
-        var jsonlPath = Path.Combine(_sessionsDirectory, $"windowtrace-session-{stamp}.jsonl");
-        var metadataPath = Path.Combine(_sessionsDirectory, $"windowtrace-session-{stamp}.session.json");
+        var uniqueStamp = $"{stamp}-{sessionId.ToString("N")[..8]}";
+        var jsonlPath = Path.Combine(_sessionsDirectory, $"windowtrace-session-{uniqueStamp}.jsonl");
+        var metadataPath = Path.Combine(_sessionsDirectory, $"windowtrace-session-{uniqueStamp}.session.json");
 
         SessionMetadata.WriteAsync(metadataPath, sessionId, startedUtc, _clock.Frequency, _targetProcessId, _targetProcessName)
             .GetAwaiter().GetResult();
