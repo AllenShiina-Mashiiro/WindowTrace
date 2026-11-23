@@ -4,7 +4,8 @@
         Title="WindowTrace" Height="780" Width="1180"
         MinHeight="600" MinWidth="900"
         Background="#F4F6FA"
-        Closing="Window_Closing">
+        Closing="Window_Closing"
+        SourceInitialized="Window_SourceInitialized">
     <Grid Margin="22">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -63,7 +64,12 @@
                     <Button Content="Browse PresentMon.exe" Click="BrowsePresentMonButton_Click"
                             Padding="12,7" Margin="0,0,8,8" />
                 </WrapPanel>
-                <TextBlock Text="PresentMon is optional. Its process is launched only after a target PID is selected. Input tracking is disabled."
+                <WrapPanel Margin="0,2,0,0">
+                    <CheckBox x:Name="InputMarkerCheckBox" Content="Enable explicit test marker: Ctrl+Alt+F12"
+                              IsChecked="False" Checked="InputMarkerCheckBox_Checked"
+                              Unchecked="InputMarkerCheckBox_Unchecked" Margin="0,0,12,4" />
+                </WrapPanel>
+                <TextBlock Text="PresentMon is optional and runs only for the selected PID. Input marker is off by default; when enabled, the registered chord is consumed as a timestamp marker only. No other keys or key contents are monitored."
                            Foreground="#64748B" FontSize="11" TextWrapping="Wrap" />
             </StackPanel>
         </Border>
