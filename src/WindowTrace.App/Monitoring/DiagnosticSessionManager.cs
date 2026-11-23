@@ -44,6 +44,7 @@ public sealed class DiagnosticSessionManager
     private long _bufferEvictionsAtSessionStart;
     private int? _etwEventsLost;
     private long _etwTimestampFallbackCount;
+    private long _etwThrottledEventCount;
 
     public DiagnosticSessionManager(QpcClock clock, BoundedEventBuffer buffer, string? sessionsDirectory = null)
     {
@@ -86,6 +87,12 @@ public sealed class DiagnosticSessionManager
     {
         lock (_gate)
             _etwTimestampFallbackCount = Math.Max(0, count);
+    }
+
+    public void SetEtwThrottledEventCount(long count)
+    {
+        lock (_gate)
+            _etwThrottledEventCount = Math.Max(0, count);
     }
 
     public void SetTarget(uint processId, string processName, uint? currentForegroundProcessId)
@@ -532,6 +539,7 @@ public sealed class DiagnosticSessionManager
             _etwEventsLost,
             _buffer.Capacity,
             _etwTimestampFallbackCount,
+            _etwThrottledEventCount,
             _preRollEventsQueued,
             _preRollEventsRejected);
 
@@ -570,6 +578,7 @@ public sealed class DiagnosticSessionManager
             FileLimitDroppedRecords = writer.FileLimitDroppedRecords,
             WriterErrorDroppedRecords = writer.WriterErrorDroppedRecords,
             EtwTimestampFallbackCount = context.EtwTimestampFallbackCount,
+            EtwThrottledEventCount = context.EtwThrottledEventCount,
             PreRollEventsSelected = context.PreRollEventCount,
             PreRollEventsQueued = context.PreRollEventsQueued,
             PreRollEventsRejected = context.PreRollEventsRejected,
@@ -628,6 +637,7 @@ public sealed class DiagnosticSessionManager
         int? EtwEventsLostAtFinalization,
         int BufferCapacity,
         long EtwTimestampFallbackCount,
+        long EtwThrottledEventCount,
         int PreRollEventsQueued,
         int PreRollEventsRejected);
 }
