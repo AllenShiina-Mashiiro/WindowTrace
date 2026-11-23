@@ -22,15 +22,16 @@ Do not treat the OS display version as the only variable. The development comput
 
 ## Functional validation
 
-1. Start WindowTrace and select the game while it is foreground.
-2. Confirm that the selected PID and process name are correct.
-3. Confirm the ETW provider capability entries are written to the rolling buffer.
-4. Switch away from the game and confirm a session starts.
+1. Launch the game and leave its main window open.
+2. Use **1. Select game window** and choose the game from the visible-window list; verify the displayed process name, PID and title.
+3. Start monitoring with **2. Start monitoring** and verify the UI reports that it is waiting for the selected game to lose focus.
+4. Switch to the game, wait at least 3 seconds, then switch to another application and confirm a session starts.
 5. Keep the game in the background for at least 10 seconds.
 6. Return to the game and wait 5 seconds.
 7. Confirm the session finalizes and produces JSONL, session metadata and quality JSON files.
 8. Repeat at least 20 focus-loss/focus-gain cycles.
-9. Export one session to CSV and verify that commas, quotes and Unicode titles survive export.
+9. Close/relaunch the game between tests and verify that stale HWND selections are rejected and the window list can be refreshed.
+10. Export one session to CSV and verify that commas, quotes and Unicode titles survive export.
 
 ## Session timing acceptance
 
