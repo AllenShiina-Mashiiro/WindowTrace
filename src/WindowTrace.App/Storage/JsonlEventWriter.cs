@@ -28,6 +28,8 @@ public sealed class JsonlEventWriter : IAsyncDisposable
     private long _queueOverflowDroppedRecords;
     private long _priorityQueueOverflowDroppedRecords;
     private long _fileLimitDroppedRecords;
+    private long _regularBudgetDroppedRecords;
+    private long _hardFileLimitDroppedRecords;
     private long _writerErrorDroppedRecords;
     private long _preRollRecordsWritten;
     private long _bytesWritten;
@@ -75,6 +77,8 @@ public sealed class JsonlEventWriter : IAsyncDisposable
     public long QueueOverflowDroppedRecords => Interlocked.Read(ref _queueOverflowDroppedRecords);
     public long PriorityQueueOverflowDroppedRecords => Interlocked.Read(ref _priorityQueueOverflowDroppedRecords);
     public long FileLimitDroppedRecords => Interlocked.Read(ref _fileLimitDroppedRecords);
+    public long RegularBudgetDroppedRecords => Interlocked.Read(ref _regularBudgetDroppedRecords);
+    public long HardFileLimitDroppedRecords => Interlocked.Read(ref _hardFileLimitDroppedRecords);
     public long WriterErrorDroppedRecords => Interlocked.Read(ref _writerErrorDroppedRecords);
     public long PreRollRecordsWritten => Interlocked.Read(ref _preRollRecordsWritten);
     public long DroppedRecords =>
@@ -84,6 +88,7 @@ public sealed class JsonlEventWriter : IAsyncDisposable
     public long CriticalReserveBytes => _criticalReserveBytes;
     public bool LimitReached =>
         Volatile.Read(ref _regularLimitReached) != 0 || Volatile.Read(ref _totalLimitReached) != 0;
+    public bool RegularFileBudgetReached => Volatile.Read(ref _regularLimitReached) != 0;
     public bool TotalFileLimitReached => Volatile.Read(ref _totalLimitReached) != 0;
     public Exception? LastError => _lastError;
     public string FilePath => _path;
@@ -97,9 +102,17 @@ public sealed class JsonlEventWriter : IAsyncDisposable
         }
 
         var isPriority = IsPriorityRecord(item);
-        if (TotalFileLimitReached || (!isPriority && Volatile.Read(ref _regularLimitReached) != 0))
+        if (TotalFileLimitReached)
         {
             Interlocked.Increment(ref _fileLimitDroppedRecords);
+            Interlocked.Increment(ref _hardFileLimitDroppedRecords);
+            return false;
+        }
+
+        if (!isPriority && RegularFileBudgetReached)
+        {
+            Interlocked.Increment(ref _fileLimitDroppedRecords);
+            Interlocked.Increment(ref _regularBudgetDroppedRecords);
             return false;
         }
 
@@ -190,6 +203,7 @@ public sealed class JsonlEventWriter : IAsyncDisposable
                         {
                             Interlocked.Exchange(ref _totalLimitReached, 1);
                             Interlocked.Increment(ref _fileLimitDroppedRecords);
+                            Interlocked.Increment(ref _hardFileLimitDroppedRecords);
                             continue;
                         }
                     }
@@ -197,6 +211,7 @@ public sealed class JsonlEventWriter : IAsyncDisposable
                     {
                         Interlocked.Exchange(ref _regularLimitReached, 1);
                         Interlocked.Increment(ref _fileLimitDroppedRecords);
+                        Interlocked.Increment(ref _regularBudgetDroppedRecords);
                         continue;
                     }
 
