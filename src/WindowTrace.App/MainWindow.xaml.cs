@@ -34,6 +34,7 @@ public partial class MainWindow : Window
     private long _displayedEvents;
     private long _presentMonFrameCount;
     private long _gpuSampleCount;
+    private int _inputMarkerSequence;
     private int _lastReportedEtwEventsLost = -1;
     private long _lastReportedWindowEventDrops;
     private HwndSource? _windowSource;
@@ -107,6 +108,9 @@ public partial class MainWindow : Window
         if (message == WmHotKey && wParam.ToInt32() == InputMarkerHotKeyId)
         {
             var qpc = _clock.GetTimestamp();
+            var markerSequence = Interlocked.Increment(ref _inputMarkerSequence);
+            var markerPair = (markerSequence + 1) / 2;
+            var markerPhase = markerSequence % 2 == 1 ? "Start" : "Response";
             var item = new DiagnosticEvent(
                 Guid.NewGuid(),
                 "InputTestMarker",
@@ -120,7 +124,7 @@ public partial class MainWindow : Window
                 null,
                 _sessions.TargetProcessName,
                 null,
-                "Explicit Ctrl+Alt+F12 timestamp marker. No key contents or other keyboard events were collected.");
+                $"TestPair={markerPair};MarkerPhase={markerPhase};Explicit Ctrl+Alt+F12 marker. The chord is consumed; no key contents or other keyboard events were collected.");
 
             _sessions.PublishTelemetry(item);
             DisplayEvent(item);
@@ -141,6 +145,7 @@ public partial class MainWindow : Window
             Interlocked.Exchange(ref _displayedEvents, 0);
             Interlocked.Exchange(ref _presentMonFrameCount, 0);
             Interlocked.Exchange(ref _gpuSampleCount, 0);
+            Interlocked.Exchange(ref _inputMarkerSequence, 0);
             Events.Clear();
             EventCountText.Text = "0";
             _lastReportedEtwEventsLost = -1;
