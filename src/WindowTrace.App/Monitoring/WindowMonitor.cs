@@ -16,6 +16,7 @@ public sealed class WindowMonitor : IDisposable
     private const uint EventSystemForeground = 0x0003;
     private const uint EventSystemMinimizeStart = 0x0016;
     private const uint EventSystemMinimizeEnd = 0x0017;
+    private const uint EventObjectFocus = 0x8005;
     private const uint WineventOutOfContext = 0x0000;
 
     private readonly QpcClock _clock;
@@ -24,6 +25,7 @@ public sealed class WindowMonitor : IDisposable
     private readonly Task _worker;
     private nint _foregroundHook;
     private nint _minimizeHook;
+    private nint _objectFocusHook;
     private volatile bool _disposed;
 
     public WindowMonitor(QpcClock clock)
@@ -74,6 +76,18 @@ public sealed class WindowMonitor : IDisposable
 
         if (_minimizeHook == nint.Zero)
             MonitorError?.Invoke($"Minimize/restore hook unavailable. Win32 error: {Marshal.GetLastWin32Error()}.");
+
+        _objectFocusHook = SetWinEventHook(
+            EventObjectFocus,
+            EventObjectFocus,
+            nint.Zero,
+            _callback,
+            0,
+            0,
+            WineventOutOfContext);
+
+        if (_objectFocusHook == nint.Zero)
+            MonitorError?.Invoke($"Object-focus hook unavailable. Win32 error: {Marshal.GetLastWin32Error()}.");
     }
 
     public WindowSnapshot? CaptureForeground()
@@ -87,7 +101,7 @@ public sealed class WindowMonitor : IDisposable
         if (processId == 0)
             return null;
 
-        return BuildSnapshot(new PendingWindowEvent(qpc, hwnd, processId, threadId, "ForegroundChanged"));
+        return BuildSnapshot(new PendingWindowEvent(qpc, hwnd, processId, threadId, "ForegroundChanged", 0, 0));
     }
 
     public void Stop()
@@ -102,6 +116,12 @@ public sealed class WindowMonitor : IDisposable
         {
             UnhookWinEvent(_minimizeHook);
             _minimizeHook = nint.Zero;
+        }
+
+        if (_objectFocusHook != nint.Zero)
+        {
+            UnhookWinEvent(_objectFocusHook);
+            _objectFocusHook = nint.Zero;
         }
     }
 
@@ -122,6 +142,7 @@ public sealed class WindowMonitor : IDisposable
             EventSystemForeground => "ForegroundChanged",
             EventSystemMinimizeStart => "WindowMinimizeStarted",
             EventSystemMinimizeEnd => "WindowRestored",
+            EventObjectFocus => "ObjectFocusChanged",
             _ => null
         };
         if (windowEventType is null)
@@ -134,7 +155,7 @@ public sealed class WindowMonitor : IDisposable
             if (processId == 0)
                 return;
 
-            _pendingEvents.Writer.TryWrite(new PendingWindowEvent(qpc, hwnd, processId, threadId, windowEventType));
+            _pendingEvents.Writer.TryWrite(new PendingWindowEvent(qpc, hwnd, processId, threadId, windowEventType, idObject, idChild));
         }
         catch (Exception ex)
         {
@@ -178,7 +199,9 @@ public sealed class WindowMonitor : IDisposable
             ReadProcessName(pending.ProcessId),
             ReadWindowTitle(pending.Handle),
             IsIconic(pending.Handle),
-            pending.EventType);
+            pending.EventType,
+            pending.ObjectId,
+            pending.ChildId);
     }
 
     private static string ReadWindowTitle(nint hwnd)
@@ -223,7 +246,9 @@ public sealed class WindowMonitor : IDisposable
         nint Handle,
         uint ProcessId,
         uint ThreadId,
-        string EventType);
+        string EventType,
+        int ObjectId,
+        int ChildId);
 
     private delegate void WinEventDelegate(
         nint hWinEventHook,
