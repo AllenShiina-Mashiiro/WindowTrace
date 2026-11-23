@@ -41,7 +41,7 @@ public sealed class FrameMetricsAggregator
             _previousQpcBySwapChain[swapChain] = qpc;
         }
 
-        if (frameTime is not > 0 || double.IsNaN(frameTime.Value) || double.IsInfinity(frameTime.Value))
+        if (!frameTime.HasValue || frameTime.Value <= 0 || double.IsNaN(frameTime.Value) || double.IsInfinity(frameTime.Value))
             return null;
 
         _frameTimesMs.Enqueue(frameTime.Value);
