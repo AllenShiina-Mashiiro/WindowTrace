@@ -22,7 +22,9 @@ public sealed class JsonlEventWriter : IAsyncDisposable
     private readonly Task _worker;
     private readonly string _path;
     private readonly CancellationTokenSource _cancellation = new();
-    private long _droppedRecords;
+    private long _queueOverflowDroppedRecords;
+    private long _fileLimitDroppedRecords;
+    private long _writerErrorDroppedRecords;
     private long _bytesWritten;
     private int _limitReached;
     private Exception? _lastError;
@@ -52,7 +54,11 @@ public sealed class JsonlEventWriter : IAsyncDisposable
         _worker = Task.Run(WriteLoopAsync);
     }
 
-    public long DroppedRecords => Interlocked.Read(ref _droppedRecords);
+    public long QueueOverflowDroppedRecords => Interlocked.Read(ref _queueOverflowDroppedRecords);
+    public long FileLimitDroppedRecords => Interlocked.Read(ref _fileLimitDroppedRecords);
+    public long WriterErrorDroppedRecords => Interlocked.Read(ref _writerErrorDroppedRecords);
+    public long DroppedRecords =>
+        QueueOverflowDroppedRecords + FileLimitDroppedRecords + WriterErrorDroppedRecords;
     public long BytesWritten => Interlocked.Read(ref _bytesWritten);
     public long MaxBytes { get; }
     public bool LimitReached => Volatile.Read(ref _limitReached) != 0;
@@ -61,9 +67,21 @@ public sealed class JsonlEventWriter : IAsyncDisposable
 
     public bool TryWrite(DiagnosticEvent item)
     {
-        if (_lastError is not null || LimitReached || !_channel.Writer.TryWrite(item))
+        if (_lastError is not null)
         {
-            Interlocked.Increment(ref _droppedRecords);
+            Interlocked.Increment(ref _writerErrorDroppedRecords);
+            return false;
+        }
+
+        if (LimitReached)
+        {
+            Interlocked.Increment(ref _fileLimitDroppedRecords);
+            return false;
+        }
+
+        if (!_channel.Writer.TryWrite(item))
+        {
+            Interlocked.Increment(ref _queueOverflowDroppedRecords);
             return false;
         }
 
@@ -94,7 +112,7 @@ public sealed class JsonlEventWriter : IAsyncDisposable
                 {
                     if (LimitReached)
                     {
-                        Interlocked.Increment(ref _droppedRecords);
+                        Interlocked.Increment(ref _fileLimitDroppedRecords);
                         continue;
                     }
 
@@ -103,7 +121,7 @@ public sealed class JsonlEventWriter : IAsyncDisposable
                     if (Interlocked.Read(ref _bytesWritten) + lineBytes > MaxBytes)
                     {
                         Interlocked.Exchange(ref _limitReached, 1);
-                        Interlocked.Increment(ref _droppedRecords);
+                        Interlocked.Increment(ref _fileLimitDroppedRecords);
                         continue;
                     }
 
@@ -121,7 +139,7 @@ public sealed class JsonlEventWriter : IAsyncDisposable
         {
             _lastError = ex;
             while (_channel.Reader.TryRead(out _))
-                Interlocked.Increment(ref _droppedRecords);
+                Interlocked.Increment(ref _writerErrorDroppedRecords);
         }
     }
 
@@ -148,7 +166,7 @@ public sealed class JsonlEventWriter : IAsyncDisposable
             if (_worker.IsCompleted)
             {
                 while (_channel.Reader.TryRead(out _))
-                    Interlocked.Increment(ref _droppedRecords);
+                    Interlocked.Increment(ref _writerErrorDroppedRecords);
             }
 
             _cancellation.Dispose();
