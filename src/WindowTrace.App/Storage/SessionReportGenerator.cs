@@ -443,7 +443,7 @@ public static class SessionReportGenerator
             if (item.Source.Contains("Win32k", StringComparison.OrdinalIgnoreCase))
             {
                 win32k++;
-                if (item.ProcessId == focusGained.ProcessId)
+                if (focusGained.ProcessId is uint targetPid && item.ProcessId == targetPid)
                     win32kTargetProcess++;
                 else
                     win32kOtherProcess++;
