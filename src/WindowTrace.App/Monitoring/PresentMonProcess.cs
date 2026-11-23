@@ -132,10 +132,10 @@ public sealed class PresentMonProcess : IAsyncDisposable
                 _clock.Frequency,
                 _clock.ToUtc(eventQpc),
                 _clock.ElapsedMilliseconds(_clock.AnchorTimestamp, eventQpc),
+                TryGetProcessId(fields),
                 null,
                 null,
-                null,
-                null,
+                fields.TryGetValue("Application", out var application) ? application : null,
                 null,
                 details));
 
@@ -147,6 +147,18 @@ public sealed class PresentMonProcess : IAsyncDisposable
         {
             StatusChanged?.Invoke($"PresentMon CSV parse warning: {ex.Message}");
         }
+    }
+
+    private static uint? TryGetProcessId(IReadOnlyDictionary<string, string> fields)
+    {
+        foreach (var key in new[] { "ProcessID", "ProcessId" })
+        {
+            if (fields.TryGetValue(key, out var value) &&
+                uint.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var processId))
+                return processId;
+        }
+
+        return null;
     }
 
     private static bool TryGetQpc(
