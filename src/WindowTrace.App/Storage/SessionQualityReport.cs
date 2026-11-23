@@ -29,6 +29,7 @@ public sealed record SessionQualityReport(
     public long FileLimitDroppedRecords { get; init; }
     public long WriterErrorDroppedRecords { get; init; }
     public long? EtwTimestampFallbackCount { get; init; }
+    public long? EtwThrottledEventCount { get; init; }
     public long? PriorityQueueOverflowDroppedRecords { get; init; }
     public long? RegularBudgetDroppedRecords { get; init; }
     public long? HardFileLimitDroppedRecords { get; init; }
