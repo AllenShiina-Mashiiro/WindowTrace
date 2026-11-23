@@ -1,3 +1,4 @@
+using System.IO;
 using System.Collections.ObjectModel;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -196,7 +197,7 @@ public partial class MainWindow : Window
 
         try
         {
-            await CsvExporter.ExportJsonlAsync(source, dialog.FileName);
+            await CsvExporter.ExportJsonlAsync(source!, dialog.FileName);
             FooterText.Text = $"CSV exported: {dialog.FileName}";
         }
         catch (Exception ex)
@@ -652,7 +653,7 @@ public partial class MainWindow : Window
             _clock.Frequency,
             _clock.ToUtc(qpc),
             _clock.ElapsedMilliseconds(_clock.AnchorTimestamp, qpc),
-            Environment.ProcessId,
+            (uint)Environment.ProcessId,
             null,
             null,
             null,
