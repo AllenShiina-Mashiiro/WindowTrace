@@ -211,6 +211,8 @@ public static class SessionReportGenerator
 
         report.AppendLine("## Interpretation limits");
         report.AppendLine();
+        report.AppendLine("- WinEvent QPC timestamps represent callback receipt time; the raw WinEventSystemTimeMs field is retained separately and is not converted to QPC.");
+        report.AppendLine("- FocusLost/FocusGained markers inherit the WinEvent callback-receipt timestamp. Manual input markers use hotkey-message receipt time; neither is the time a game key was processed.");
         report.AppendLine("- Foreground-window changes and GUI focus metadata do not prove that a game's input thread processed a key.");
         report.AppendLine("- Win32k event payloads are omitted by privacy policy; only event timing and metadata are retained.");
         report.AppendLine("- Target-thread scheduling rows require a PID association from process thread enumeration, kernel thread lifecycle data or a matching event header. Unmapped threads are not assumed to belong to the game.");
