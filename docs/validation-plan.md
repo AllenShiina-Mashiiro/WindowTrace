@@ -46,6 +46,18 @@ Inspect QPC values, not only wall-clock display strings.
 
 ## Collector validation
 
+### Report count integrity
+
+- Generate a JSONL fixture with 97 Win32k ETW events in the latest 1.5-second post-focus window.
+- Generate the report with ETW detail limits of 30 and 300 rows. Both reports must state **97 Win32k ETW events**; only the timeline detail row count may change.
+- Include events outside the interval and verify they do not affect the count.
+
+### Timestamp provenance
+
+- Verify WinEvent records preserve callback-receipt QPC and raw `WinEventSystemTimeMs` separately; never treat the raw WinEvent milliseconds as QPC.
+- Unit-test ETW timestamp normalization for a valid event QPC and a missing/invalid QPC fallback. The latter must say `CollectorReceiptQPCFallback`, and its count must appear in the quality report.
+- Do not describe callback receipt timing as the exact time the game received or processed a key.
+
 ### Window monitor
 - Test Win+Tab, Alt+Tab, minimize/restore and returning to the game.
 - Confirm HWND, PID, TID, process name and window title are plausible.
@@ -57,7 +69,9 @@ Inspect QPC values, not only wall-clock display strings.
 - Record provider status for each machine.
 - Test once as a standard user and, only if policy permits, once from an already elevated terminal.
 - Do not change permissions or stop unrelated ETW sessions.
-- Record ETW EventsLost, rolling-buffer evictions, writer queue overflow, file-cap drops and writer-error drops as separate metrics. ETW EventsLost=0 does not mean the application persisted every event.
+- Record ETW EventsLost, rolling-buffer evictions, normal queue overflow, critical queue overflow, file-cap drops and writer-error drops as separate metrics. ETW EventsLost=0 does not mean the application persisted every event.
+- Verify the quality file reports pre-roll events selected, queued, written and rejected independently; the written count must reflect completed writer flushes, not only successful enqueue calls.
+- Under normal-queue saturation and after the regular file-byte budget is reached, verify FocusLost/FocusGained, session start/stop/completion, manual markers and collector-health records can still use the reserved priority queue and byte budget.
 - Confirm that the collector shuts down cleanly and does not leave a WindowTrace ETW session behind.
 - Compare available providers and event names between 25H2 and 26H2.
 - Verify target-thread discovery events include the selected game's GUI thread and any additional game threads reported by kernel ThreadStart/DCStart rundown.
