@@ -72,6 +72,6 @@ public static class CsvExporter
     private static string Escape(string? value)
     {
         value ??= string.Empty;
-        return """ + value.Replace(""", """").Replace("\r", " ").Replace("\n", " ") + """;
+        return "\"" + value.Replace("\"", "\"\"").Replace("\r", " ").Replace("\n", " ") + "\"";
     }
 }
