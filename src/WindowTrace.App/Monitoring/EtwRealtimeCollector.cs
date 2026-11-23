@@ -192,7 +192,10 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
             if (TryHandleThreadLifecycleEvent(data, qpc))
                 return;
 
-            var payloadDetails = BuildPrivacySafeDetails(providerName, eventName, data);
+            if (!EtwEventFilter.ShouldPersist(providerName, eventName, data.TaskName ?? string.Empty, processId, TargetProcessId))
+                return;
+
+            var payloadDetails = BuildPrivacySafeDetails(providerName, eventName);
             var details = $"TimestampQuality=ETWQPC;EventId={data.ID};Task={data.TaskName};Opcode={data.OpcodeName};{payloadDetails}";
 
             EventReceived?.Invoke(new DiagnosticEvent(
@@ -441,7 +444,7 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
             ? $"{name}={Convert.ToString(value, CultureInfo.InvariantCulture) ?? "Unavailable"}"
             : $"{name}=Unavailable";
 
-    private static string BuildPrivacySafeDetails(string providerName, string eventName, TraceEvent data)
+    private static string BuildPrivacySafeDetails(string providerName, string eventName)
     {
         if (providerName.Contains("Win32k", StringComparison.OrdinalIgnoreCase))
             return "PayloadOmittedByPrivacyPolicy;Win32k timing and event metadata only.";
@@ -449,7 +452,7 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
         if (eventName.Contains("Process", StringComparison.OrdinalIgnoreCase))
             return "PayloadOmittedToAvoidCommandLineCapture;Process event metadata only.";
 
-        return data.ToString();
+        return "PayloadOmittedToReduceRealtimeSerializationCost;Selected event metadata only.";
     }
 
     public async ValueTask DisposeAsync()
@@ -485,4 +488,86 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
 
         _processingTask = null;
     }
+}
+
+
+/// <summary>
+/// A conservative allow-list for high-value ETW observations. Providers may expose
+/// thousands of unrelated events per second; only event families that can help
+/// correlate focus, game-thread scheduling, GPU scheduling and presentation are
+/// forwarded to the rolling buffer and JSONL writer.
+/// </summary>
+public static class EtwEventFilter
+{
+    public static bool ShouldPersist(
+        string providerName,
+        string eventName,
+        string taskName,
+        uint? processId,
+        uint targetProcessId)
+    {
+        var eventAndTask = eventName + " " + taskName;
+
+        if (providerName.Equals("NT Kernel Logger", StringComparison.OrdinalIgnoreCase))
+            return ContainsAny(eventAndTask, "DPC", "ISR", "Interrupt");
+
+        if (providerName.Contains("Win32k", StringComparison.OrdinalIgnoreCase))
+        {
+            if (processId != targetProcessId)
+                return false;
+
+            return ContainsAny(eventAndTask,
+                "WakeInputIdle",
+                "QueueEventMessage",
+                "RetrieveQueueEventMessage",
+                "QueuePostMessage",
+                "RetrievePostMessage",
+                "AppMessagePump",
+                "SleepInputIdle",
+                "SendMessage",
+                "RetrieveSendMessage");
+        }
+
+        if (providerName.Contains("DxgKrnl", StringComparison.OrdinalIgnoreCase))
+        {
+            if (processId != targetProcessId && processId != 4)
+                return false;
+
+            return ContainsAny(eventAndTask,
+                "QueuePacket",
+                "DmaPacket",
+                "UpdateContextRunningTime",
+                "UpdateContextStatus",
+                "SelectContext",
+                "SignalSynchronizationObjectFromGpu",
+                "WaitForSynchronizationObjectFromGpu",
+                "VidSchiSignalSynchronizationObjectFromCpu",
+                "SetInterruptTargetPresentId",
+                "VSyncWaiterChange");
+        }
+
+        if (providerName.Contains("Dwm-Core", StringComparison.OrdinalIgnoreCase))
+            return ContainsAny(eventAndTask,
+                "SCHEDULE_",
+                "CurrentFrameId",
+                "PROCESS_ATTRIBUTION",
+                "SCHEDULED_COMPOSITION_REASON",
+                "ENDFRAME_");
+
+        if (providerName.Contains("DXGI", StringComparison.OrdinalIgnoreCase))
+            return processId == targetProcessId &&
+                ContainsAny(eventAndTask, "Present");
+
+        if (providerName.Contains("Kernel-Process", StringComparison.OrdinalIgnoreCase))
+            return processId == targetProcessId &&
+                ContainsAny(eventAndTask, "CpuPriorityChange", "CpuBasePriorityChange");
+
+        if (providerName.Contains("Kernel-Power", StringComparison.OrdinalIgnoreCase))
+            return ContainsAny(eventAndTask, "SystemLatencyUpdate", "SystemTimeResolutionChange");
+
+        return false;
+    }
+
+    private static bool ContainsAny(string value, params string[] fragments)
+        => fragments.Any(fragment => value.Contains(fragment, StringComparison.OrdinalIgnoreCase));
 }
