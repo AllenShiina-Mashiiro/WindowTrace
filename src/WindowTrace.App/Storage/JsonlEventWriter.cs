@@ -53,10 +53,6 @@ public sealed class JsonlEventWriter : IAsyncDisposable
         _path = path;
         MaxBytes = maxBytes;
         _criticalReserveBytes = Math.Min(criticalReserveBytes, Math.Max(64 * 1024, maxBytes / 8));
-        var directory = Path.GetDirectoryName(path);
-        if (!string.IsNullOrWhiteSpace(directory))
-            Directory.CreateDirectory(directory);
-
         _priorityChannel = Channel.CreateBounded<DiagnosticEvent>(
             new BoundedChannelOptions(priorityQueueCapacity)
             {
@@ -143,6 +139,10 @@ public sealed class JsonlEventWriter : IAsyncDisposable
     {
         try
         {
+            var directory = Path.GetDirectoryName(_path);
+            if (!string.IsNullOrWhiteSpace(directory))
+                Directory.CreateDirectory(directory);
+
             await using var stream = new FileStream(
                 _path,
                 FileMode.Create,
