@@ -25,6 +25,7 @@ public sealed class DiagnosticSessionManager
     private readonly BoundedEventBuffer _buffer;
     private readonly string _sessionsDirectory;
     private JsonlEventWriter? _writer;
+    private Task<PreRollInitializationResult>? _preRollInitializationTask;
     private Guid? _sessionId;
     private uint? _targetProcessId;
     private string? _targetProcessName;
@@ -38,6 +39,8 @@ public sealed class DiagnosticSessionManager
     private long _sessionStartQpc;
     private double _actualPreRollMs;
     private int _preRollEventCount;
+    private int _preRollEventsQueued;
+    private int _preRollEventsRejected;
     private long _bufferEvictionsAtSessionStart;
     private int? _etwEventsLost;
     private long _etwTimestampFallbackCount;
@@ -222,8 +225,6 @@ public sealed class DiagnosticSessionManager
 
     private void StartSessionLocked(long focusLostQpc)
     {
-        Directory.CreateDirectory(_sessionsDirectory);
-
         var sessionId = Guid.NewGuid();
         var startedUtc = _clock.ToUtc(focusLostQpc);
         var stamp = startedUtc.ToString("yyyyMMdd-HHmmss-fff");
@@ -232,10 +233,8 @@ public sealed class DiagnosticSessionManager
         var jsonlPath = Path.Combine(_sessionsDirectory, $"windowtrace-session-{uniqueStamp}.jsonl");
         var metadataPath = Path.Combine(_sessionsDirectory, $"windowtrace-session-{uniqueStamp}.session.json");
 
-        SessionMetadata.WriteAsync(metadataPath, sessionId, startedUtc, _clock.Frequency, _targetProcessId, _targetProcessName)
-            .GetAwaiter().GetResult();
-
-        _writer = new JsonlEventWriter(jsonlPath);
+        var writer = new JsonlEventWriter(jsonlPath);
+        _writer = writer;
         _sessionId = sessionId;
         LastCompletedReportPath = null;
         _sessionStartQpc = focusLostQpc;
@@ -247,21 +246,11 @@ public sealed class DiagnosticSessionManager
         _postFocusFrameSampleSeen = false;
         State = DiagnosticSessionState.FocusLost;
 
-        var preRollStart = focusLostQpc - (long)(_clock.Frequency * 3d);
-        var preRollEvents = _buffer.Snapshot()
-            .Where(e => e.QpcTimestamp >= preRollStart && e.QpcTimestamp <= focusLostQpc)
-            .OrderBy(e => e.QpcTimestamp)
-            .ToArray();
-
-        _preRollEventCount = preRollEvents.Length;
-        _bufferEvictionsAtSessionStart = _buffer.DroppedEvents;
-        foreach (var priorEvent in preRollEvents)
-            _writer.TryWrite(ForActiveSession(priorEvent));
-
-        var earliestQpc = preRollEvents.Length == 0 ? focusLostQpc : preRollEvents[0].QpcTimestamp;
-        var actualPreRollMs = Math.Max(0, _clock.ElapsedMilliseconds(earliestQpc, focusLostQpc));
-        _actualPreRollMs = actualPreRollMs;
-        var qualityDetails = $"RequestedPreRollMs=3000;ActualPreRollMs={actualPreRollMs:F3};PreRollEventCount={preRollEvents.Length};BufferCapacity={_buffer.Capacity};BufferEvictionsSinceStartup={_buffer.DroppedEvents}";
+        _preRollEventCount = 0;
+        _preRollEventsQueued = 0;
+        _preRollEventsRejected = 0;
+        _bufferEvictionsAtSessionStart = 0;
+        _actualPreRollMs = 0;
         var marker = new DiagnosticEvent(
             Guid.NewGuid(),
             "DiagnosticSessionStarted",
@@ -277,8 +266,79 @@ public sealed class DiagnosticSessionManager
             null,
             qualityDetails,
             _sessionId);
-        _writer.TryWrite(marker);
+        writer.TryWrite(marker);
         WriteSessionMarkerLocked("FocusLost", focusLostQpc, "Selected target process lost foreground.");
+
+        var initialization = new SessionInitialization(
+            writer, metadataPath, sessionId, startedUtc, focusLostQpc,
+            _targetProcessId, _targetProcessName);
+        _preRollInitializationTask = Task.Run(() => InitializeSessionAsync(initialization));
+    }
+
+    private async Task<PreRollInitializationResult> InitializeSessionAsync(SessionInitialization initialization)
+    {
+        var preRollStart = initialization.FocusLostQpc - (long)(_clock.Frequency * 3d);
+        var snapshot = _buffer.Snapshot();
+        var preRollEvents = snapshot
+            .Where(item => item.QpcTimestamp >= preRollStart && item.QpcTimestamp <= initialization.FocusLostQpc)
+            .OrderBy(item => item.QpcTimestamp)
+            .ToArray();
+
+        var queued = 0;
+        var rejected = 0;
+        foreach (var priorEvent in preRollEvents)
+        {
+            var tagged = priorEvent with
+            {
+                SessionId = initialization.SessionId,
+                RelativeMilliseconds = _clock.ElapsedMilliseconds(initialization.FocusLostQpc, priorEvent.QpcTimestamp),
+                CapturePhase = "PreRoll"
+            };
+            if (initialization.Writer.TryWrite(tagged))
+                queued++;
+            else
+                rejected++;
+        }
+
+        var earliestQpc = preRollEvents.Length == 0
+            ? initialization.FocusLostQpc
+            : preRollEvents[0].QpcTimestamp;
+        var actualPreRollMs = Math.Max(0, _clock.ElapsedMilliseconds(earliestQpc, initialization.FocusLostQpc));
+        var evictionsAtStart = _buffer.DroppedEvents;
+        var qualityDetails =
+            $"RequestedPreRollMs=3000;ActualPreRollMs={actualPreRollMs:F3};PreRollEventsSelected={preRollEvents.Length};PreRollEventsQueued={queued};PreRollEventsRejected={rejected};BufferCapacity={_buffer.Capacity};BufferEvictionsSinceStartup={evictionsAtStart}";
+
+        try
+        {
+            await SessionMetadata.WriteAsync(
+                initialization.MetadataPath,
+                initialization.SessionId,
+                initialization.StartedUtc,
+                _clock.Frequency,
+                initialization.TargetProcessId,
+                initialization.TargetProcessName);
+        }
+        catch (Exception ex)
+        {
+            var qpc = _clock.GetTimestamp();
+            initialization.Writer.TryWrite(new DiagnosticEvent(
+                Guid.NewGuid(), "CollectorWarning", "SessionMetadata",
+                qpc, _clock.Frequency, _clock.ToUtc(qpc),
+                _clock.ElapsedMilliseconds(initialization.FocusLostQpc, qpc),
+                initialization.TargetProcessId, null, null, initialization.TargetProcessName, null,
+                $"Session metadata write failed: {ex.Message}", initialization.SessionId));
+        }
+
+        var qpcQuality = _clock.GetTimestamp();
+        initialization.Writer.TryWrite(new DiagnosticEvent(
+            Guid.NewGuid(), "PreRollCaptureSummary", "DiagnosticSessionManager",
+            qpcQuality, _clock.Frequency, _clock.ToUtc(qpcQuality),
+            _clock.ElapsedMilliseconds(initialization.FocusLostQpc, qpcQuality),
+            initialization.TargetProcessId, null, null, initialization.TargetProcessName, null,
+            qualityDetails, initialization.SessionId));
+
+        return new PreRollInitializationResult(
+            actualPreRollMs, preRollEvents.Length, queued, rejected, evictionsAtStart);
     }
 
     private void WriteSessionMarkerLocked(string eventType, long qpc, string details)
@@ -336,6 +396,8 @@ public sealed class DiagnosticSessionManager
             completionReason = evidenceReady ? "PostFocusEvidenceReady" : "PostFocusMaximumElapsed";
             completedWriter = _writer;
             context = CaptureSessionContextLocked();
+            var preRollInitializationTask = _preRollInitializationTask;
+            _preRollInitializationTask = null;
             completionQpc = nowQpc;
             completedWriter.TryWrite(new DiagnosticEvent(
                 Guid.NewGuid(), "DiagnosticSessionCompleted", "WindowTrace",
@@ -346,6 +408,7 @@ public sealed class DiagnosticSessionManager
                 _sessionId));
             LastCompletedSessionPath = completedWriter.FilePath;
             _writer = null;
+            _preRollInitializationTask = null;
             _postCaptureMinimumQpc = null;
             _postCaptureMaximumQpc = null;
             _postCaptureStartedQpc = null;
@@ -355,8 +418,19 @@ public sealed class DiagnosticSessionManager
             State = DiagnosticSessionState.Completed;
         }
 
+        var preRollResult = preRollInitializationTask is null
+            ? PreRollInitializationResult.Empty
+            : await preRollInitializationTask;
+        context = context! with
+        {
+            ActualPreRollMs = preRollResult.ActualPreRollMs,
+            PreRollEventCount = preRollResult.Selected,
+            PreRollEventsQueued = preRollResult.Queued,
+            PreRollEventsRejected = preRollResult.Rejected,
+            BufferEvictionsAtSessionStart = preRollResult.BufferEvictionsAtStart
+        };
         await completedWriter.DisposeAsync();
-        await WriteQualityReportAsync(completedWriter, context!, completionQpc, completionReason);
+        await WriteQualityReportAsync(completedWriter, context, completionQpc, completionReason);
         StatusChanged?.Invoke($"Diagnostic session completed ({completionReason}): {completedWriter.FilePath}. Records not persisted: {completedWriter.DroppedRecords}; size limit reached: {completedWriter.LimitReached}.");
     }
 
@@ -364,6 +438,7 @@ public sealed class DiagnosticSessionManager
     {
         JsonlEventWriter? writer;
         SessionContext? context = null;
+        Task<PreRollInitializationResult>? preRollInitializationTask = null;
         long completionQpc = 0;
         lock (_gate)
         {
@@ -371,6 +446,7 @@ public sealed class DiagnosticSessionManager
             if (writer is not null)
             {
                 context = CaptureSessionContextLocked();
+                preRollInitializationTask = _preRollInitializationTask;
                 var stopQpc = _clock.GetTimestamp();
                 completionQpc = stopQpc;
                 writer.TryWrite(new DiagnosticEvent(
@@ -395,8 +471,19 @@ public sealed class DiagnosticSessionManager
 
         if (writer is not null)
         {
+            var preRollResult = preRollInitializationTask is null
+                ? PreRollInitializationResult.Empty
+                : await preRollInitializationTask;
+            context = context! with
+            {
+                ActualPreRollMs = preRollResult.ActualPreRollMs,
+                PreRollEventCount = preRollResult.Selected,
+                PreRollEventsQueued = preRollResult.Queued,
+                PreRollEventsRejected = preRollResult.Rejected,
+                BufferEvictionsAtSessionStart = preRollResult.BufferEvictionsAtStart
+            };
             await writer.DisposeAsync();
-            await WriteQualityReportAsync(writer, context!, completionQpc, "MonitoringStopped");
+            await WriteQualityReportAsync(writer, context, completionQpc, "MonitoringStopped");
             StatusChanged?.Invoke($"Diagnostic session stopped and saved: {writer.FilePath}. Records not persisted: {writer.DroppedRecords}; size limit reached: {writer.LimitReached}.");
         }
     }
@@ -413,7 +500,9 @@ public sealed class DiagnosticSessionManager
             _buffer.DroppedEvents,
             _etwEventsLost,
             _buffer.Capacity,
-            _etwTimestampFallbackCount);
+            _etwTimestampFallbackCount,
+            _preRollEventsQueued,
+            _preRollEventsRejected);
 
     private async Task WriteQualityReportAsync(
         JsonlEventWriter writer,
@@ -445,7 +534,12 @@ public sealed class DiagnosticSessionManager
             QueueOverflowDroppedRecords = writer.QueueOverflowDroppedRecords,
             FileLimitDroppedRecords = writer.FileLimitDroppedRecords,
             WriterErrorDroppedRecords = writer.WriterErrorDroppedRecords,
-            EtwTimestampFallbackCount = context.EtwTimestampFallbackCount
+            EtwTimestampFallbackCount = context.EtwTimestampFallbackCount,
+            PriorityQueueOverflowDroppedRecords = writer.PriorityQueueOverflowDroppedRecords,
+            PreRollEventsSelected = context.PreRollEventCount,
+            PreRollEventsQueued = context.PreRollEventsQueued,
+            PreRollEventsRejected = context.PreRollEventsRejected,
+            PreRollEventsWritten = writer.PreRollRecordsWritten
         };
 
         try
@@ -469,6 +563,25 @@ public sealed class DiagnosticSessionManager
         }
     }
 
+    private sealed record SessionInitialization(
+        JsonlEventWriter Writer,
+        string MetadataPath,
+        Guid SessionId,
+        DateTimeOffset StartedUtc,
+        long FocusLostQpc,
+        uint? TargetProcessId,
+        string? TargetProcessName);
+
+    private sealed record PreRollInitializationResult(
+        double ActualPreRollMs,
+        int Selected,
+        int Queued,
+        int Rejected,
+        long BufferEvictionsAtStart)
+    {
+        public static PreRollInitializationResult Empty { get; } = new(0, 0, 0, 0, 0);
+    }
+
     private sealed record SessionContext(
         Guid? SessionId,
         uint? TargetProcessId,
@@ -480,5 +593,7 @@ public sealed class DiagnosticSessionManager
         long BufferEvictionsAtFinalization,
         int? EtwEventsLostAtFinalization,
         int BufferCapacity,
-        long EtwTimestampFallbackCount);
+        long EtwTimestampFallbackCount,
+        int PreRollEventsQueued,
+        int PreRollEventsRejected);
 }
