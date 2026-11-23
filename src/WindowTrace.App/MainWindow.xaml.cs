@@ -514,7 +514,7 @@ public partial class MainWindow : Window
             unchecked((ulong)snapshot.Handle),
             snapshot.ProcessName,
             snapshot.WindowTitle,
-            $"IsMinimized={snapshot.IsMinimized};TimestampQuality=GetForegroundWindowSnapshotQpc");
+            $"IsMinimized={snapshot.IsMinimized};FocusedWindowHandle={FormatWindowHandle(snapshot.FocusedWindowHandle)};GuiThreadFlags={snapshot.GuiThreadFlags?.ToString() ?? "Unavailable"};TimestampQuality=GetForegroundWindowSnapshotQpc");
 
         _sessions.PublishForeground(item, snapshot.ProcessId);
         DisplayEvent(item);
@@ -522,10 +522,13 @@ public partial class MainWindow : Window
         {
             CurrentWindowText.Text =
                 $"{snapshot.ProcessName} (PID {snapshot.ProcessId}) | " +
-                $"HWND 0x{snapshot.Handle.ToInt64():X} | " +
+                $"HWND 0x{snapshot.Handle.ToInt64():X} | Focus HWND {FormatWindowHandle(snapshot.FocusedWindowHandle)} | " +
                 $"{(string.IsNullOrWhiteSpace(snapshot.WindowTitle) ? "(untitled window)" : snapshot.WindowTitle)}";
         });
     }
+
+    private static string FormatWindowHandle(nint? handle)
+        => handle is nint value ? $"0x{value.ToInt64():X}" : "Unavailable";
 
     private void OnForegroundChanged(WindowSnapshot snapshot)
     {
@@ -545,7 +548,7 @@ public partial class MainWindow : Window
             unchecked((ulong)snapshot.Handle),
             snapshot.ProcessName,
             snapshot.WindowTitle,
-            $"IsMinimized={snapshot.IsMinimized};ObjectId={snapshot.ObjectId};ChildId={snapshot.ChildId};TimestampQuality=WinEventCallbackReceiptQpc");
+            $"IsMinimized={snapshot.IsMinimized};ObjectId={snapshot.ObjectId};ChildId={snapshot.ChildId};FocusedWindowHandle={FormatWindowHandle(snapshot.FocusedWindowHandle)};GuiThreadFlags={snapshot.GuiThreadFlags?.ToString() ?? "Unavailable"};TimestampQuality=WinEventCallbackReceiptQpc");
 
         _sessions.PublishForeground(diagnosticEvent, snapshot.ProcessId);
         DisplayEvent(diagnosticEvent);
@@ -577,7 +580,7 @@ public partial class MainWindow : Window
             unchecked((ulong)snapshot.Handle),
             snapshot.ProcessName,
             snapshot.WindowTitle,
-            $"IsMinimized={snapshot.IsMinimized};TimestampQuality=WinEventCallbackReceiptQpc");
+            $"IsMinimized={snapshot.IsMinimized};FocusedWindowHandle={FormatWindowHandle(snapshot.FocusedWindowHandle)};GuiThreadFlags={snapshot.GuiThreadFlags?.ToString() ?? "Unavailable"};TimestampQuality=WinEventCallbackReceiptQpc");
 
         _sessions.PublishTelemetry(item);
         DisplayEvent(item);
