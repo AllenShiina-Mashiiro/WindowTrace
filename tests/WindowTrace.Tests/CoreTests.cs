@@ -462,6 +462,9 @@ public sealed class CoreTests
             Assert.Contains("BeforeLimit", lines[0]);
             Assert.True(writer.LimitReached);
             Assert.True(writer.DroppedRecords >= 2);
+            Assert.Equal(0, writer.QueueOverflowDroppedRecords);
+            Assert.True(writer.FileLimitDroppedRecords >= 2);
+            Assert.Equal(0, writer.WriterErrorDroppedRecords);
             Assert.True(writer.BytesWritten <= maxBytes);
             Assert.Null(writer.LastError);
         }
