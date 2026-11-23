@@ -248,7 +248,7 @@ public static class SessionReportGenerator
 
         if (windowEvents.Length == 0)
         {
-            report.AppendLine("No rendering, CPU, GPU or marker events were available in this interval.");
+            report.AppendLine("No rendering, CPU, GPU, ETW or marker events were available in this interval.");
             report.AppendLine();
             return;
         }
