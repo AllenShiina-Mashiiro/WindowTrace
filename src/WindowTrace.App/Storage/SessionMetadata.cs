@@ -103,7 +103,7 @@ public sealed record SessionMetadata(
 
     private static string? ReadRegistryString(string key, string valueName)
     {
-        try { return Registry.GetValue(key, valueName, null)?.ToString(); }
+        try { return FormatRegistryValue(Registry.GetValue(key, valueName, null)); }
         catch { return null; }
     }
 
@@ -112,10 +112,20 @@ public sealed record SessionMetadata(
         try
         {
             using var key = Registry.LocalMachine.OpenSubKey(subKeyPath, writable: false);
-            return key?.GetValue(valueName)?.ToString();
+            return FormatRegistryValue(key?.GetValue(valueName));
         }
         catch { return null; }
     }
+
+    private static string? FormatRegistryValue(object? value)
+        => value switch
+        {
+            null => null,
+            string text => text,
+            string[] values => string.Join("; ", values),
+            byte[] bytes => Convert.ToHexString(bytes),
+            _ => value.ToString()
+        };
 
     private static int? ReadRegistryInt(string key, string valueName)
     {
