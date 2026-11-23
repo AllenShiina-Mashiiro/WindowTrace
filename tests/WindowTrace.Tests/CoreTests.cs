@@ -155,7 +155,12 @@ public sealed class CoreTests
             {
                 QueueOverflowDroppedRecords = 2,
                 FileLimitDroppedRecords = 3,
-                WriterErrorDroppedRecords = 4
+                WriterErrorDroppedRecords = 4,
+                EtwTimestampFallbackCount = 2,
+                PriorityQueueOverflowDroppedRecords = 1,
+                RegularBudgetDroppedRecords = 2,
+                HardFileLimitDroppedRecords = 1,
+                RegularFileBudgetReached = true
             };
 
             await using (var metadataStream = File.Create(Path.ChangeExtension(jsonlPath, ".session.json")))
@@ -188,6 +193,11 @@ public sealed class CoreTests
             Assert.Contains("Manual input-response marker intervals", report);
             Assert.Contains("1,500.000 ms", report);
             Assert.Contains("ETW events lost", report);
+            Assert.Contains("ETW timestamps using collector-receipt fallback: 2", report);
+            Assert.Contains("Critical-event queue overflow (subset): 1", report);
+            Assert.Contains("Regular telemetry budget drops: 2", report);
+            Assert.Contains("Hard file-cap drops: 1", report);
+            Assert.Contains("Regular telemetry byte budget reached: True", report);
             Assert.Contains("Records not persisted (total): 9", report);
             Assert.Contains("Queue overflow: 2", report);
             Assert.Contains("File budget drops (combined): 3", report);
