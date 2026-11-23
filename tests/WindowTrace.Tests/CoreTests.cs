@@ -103,6 +103,8 @@ public sealed class CoreTests
             Assert.Contains("FocusLost", report);
             Assert.Contains("Rendering summaries", report);
             Assert.Contains("Latest 1.5-second window after focus regained", report);
+            Assert.Contains("Post-focus evidence summary", report);
+            Assert.Contains("Win32k ETW events in interval", report);
             Assert.Contains("FPS=60.00", report);
             Assert.Contains("ThreadContextSwitch", report);
             Assert.Contains("NT Kernel Logger", report);
