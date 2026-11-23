@@ -42,7 +42,7 @@ Every session records Windows version/build, DisplayVersion, UBR (when readable)
 - Optional PresentMon 2.x child process, with per-swap-chain rolling FPS, average/p95/min/max frame time, frame-time variance and standard deviation derived from frame intervals. Per-frame GPU Busy/Wait and Present Mode fields are preserved. The process is filtered to the selected PID and started with `--qpc_time`, `--output_stdout`, `--no_console_stats` and `--no_track_input`.
 - Optional timestamp-only input marker. It is off by default and registers only Ctrl+Alt+F12 when explicitly enabled.
 - JSONL event storage, session environment metadata, session quality report and CSV export.
-- Bounded event queue, buffer eviction accounting and a 256 MiB per-session JSONL file cap.
+- Bounded WinEvent pending queue (16,384 events, reject-newest on saturation) with dropped-event counts emitted into the diagnostic stream; bounded session writer queue, buffer eviction accounting and a 256 MiB per-session JSONL file cap.
 - Core unit tests and Windows GitHub Actions build/test workflow.
 
 ### Not yet claimed as fully implemented or validated
