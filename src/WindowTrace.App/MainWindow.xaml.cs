@@ -795,7 +795,7 @@ public partial class MainWindow : Window
             unchecked((ulong)snapshot.Handle),
             snapshot.ProcessName,
             snapshot.WindowTitle,
-            $"IsMinimized={snapshot.IsMinimized};ObjectId={snapshot.ObjectId};ChildId={snapshot.ChildId};FocusedWindowHandle={FormatWindowHandle(snapshot.FocusedWindowHandle)};GuiThreadFlags={snapshot.GuiThreadFlags?.ToString() ?? "Unavailable"};FocusQueryDelayMs={FormatOptionalMilliseconds(snapshot.FocusQueryDelayMs)};TimestampQuality=WinEventCallbackReceiptQpc");
+            $"IsMinimized={snapshot.IsMinimized};ObjectId={snapshot.ObjectId};ChildId={snapshot.ChildId};FocusedWindowHandle={FormatWindowHandle(snapshot.FocusedWindowHandle)};GuiThreadFlags={snapshot.GuiThreadFlags?.ToString() ?? "Unavailable"};FocusQueryDelayMs={FormatOptionalMilliseconds(snapshot.FocusQueryDelayMs)};WinEventSystemTimeMs={snapshot.WinEventSystemTimeMilliseconds?.ToString(CultureInfo.InvariantCulture) ?? "Unavailable"};TimestampQuality=WinEventCallbackReceiptQpc");
 
         _sessions.PublishForeground(diagnosticEvent, snapshot.ProcessId);
         DisplayEvent(diagnosticEvent);
@@ -828,7 +828,7 @@ public partial class MainWindow : Window
             unchecked((ulong)snapshot.Handle),
             snapshot.ProcessName,
             snapshot.WindowTitle,
-            $"IsMinimized={snapshot.IsMinimized};FocusedWindowHandle={FormatWindowHandle(snapshot.FocusedWindowHandle)};GuiThreadFlags={snapshot.GuiThreadFlags?.ToString() ?? "Unavailable"};FocusQueryDelayMs={FormatOptionalMilliseconds(snapshot.FocusQueryDelayMs)};TimestampQuality=WinEventCallbackReceiptQpc");
+            $"IsMinimized={snapshot.IsMinimized};FocusedWindowHandle={FormatWindowHandle(snapshot.FocusedWindowHandle)};GuiThreadFlags={snapshot.GuiThreadFlags?.ToString() ?? "Unavailable"};FocusQueryDelayMs={FormatOptionalMilliseconds(snapshot.FocusQueryDelayMs)};WinEventSystemTimeMs={snapshot.WinEventSystemTimeMilliseconds?.ToString(CultureInfo.InvariantCulture) ?? "Unavailable"};TimestampQuality=WinEventCallbackReceiptQpc");
 
         _sessions.PublishTelemetry(item);
         DisplayEvent(item);
