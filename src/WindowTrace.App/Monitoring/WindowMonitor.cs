@@ -1,13 +1,15 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading.Channels;
 using WindowTrace.Core;
 
 namespace WindowTrace.Monitoring;
 
 /// <summary>
-/// Observes system foreground-window changes using an out-of-context
-/// WinEvent hook. It does not install a keyboard hook or inspect input.
+/// Observes foreground-window changes. The WinEvent callback only captures
+/// QPC/HWND/PID/TID and queues the work; title and process lookups happen on
+/// a dedicated worker so the WPF message loop is not blocked by diagnostics.
 /// </summary>
 public sealed class WindowMonitor : IDisposable
 {
@@ -16,6 +18,8 @@ public sealed class WindowMonitor : IDisposable
 
     private readonly QpcClock _clock;
     private readonly WinEventDelegate _callback;
+    private readonly Channel<PendingWindowEvent> _pendingEvents;
+    private readonly Task _worker;
     private nint _hook;
     private bool _disposed;
 
@@ -23,6 +27,9 @@ public sealed class WindowMonitor : IDisposable
     {
         _clock = clock;
         _callback = OnWinEvent;
+        _pendingEvents = Channel.CreateUnbounded<PendingWindowEvent>(
+            new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
+        _worker = Task.Run(ProcessPendingEventsAsync);
     }
 
     public event Action<WindowSnapshot>? ForegroundChanged;
@@ -33,7 +40,6 @@ public sealed class WindowMonitor : IDisposable
     public void Start()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-
         if (IsRunning)
             return;
 
@@ -57,7 +63,15 @@ public sealed class WindowMonitor : IDisposable
     public WindowSnapshot? CaptureForeground()
     {
         var hwnd = GetForegroundWindow();
-        return hwnd == nint.Zero ? null : CaptureWindow(hwnd);
+        if (hwnd == nint.Zero)
+            return null;
+
+        var qpc = _clock.GetTimestamp();
+        var threadId = GetWindowThreadProcessId(hwnd, out var processId);
+        if (processId == 0)
+            return null;
+
+        return BuildSnapshot(new PendingWindowEvent(qpc, hwnd, processId, threadId));
     }
 
     public void Stop()
@@ -78,14 +92,17 @@ public sealed class WindowMonitor : IDisposable
         uint eventThread,
         uint eventTime)
     {
-        if (eventType != EventSystemForeground || hwnd == nint.Zero)
+        if (eventType != EventSystemForeground || hwnd == nint.Zero || _disposed)
             return;
 
         try
         {
-            var snapshot = CaptureWindow(hwnd);
-            if (snapshot is not null)
-                ForegroundChanged?.Invoke(snapshot);
+            var qpc = _clock.GetTimestamp();
+            var threadId = GetWindowThreadProcessId(hwnd, out var processId);
+            if (processId == 0)
+                return;
+
+            _pendingEvents.Writer.TryWrite(new PendingWindowEvent(qpc, hwnd, processId, threadId));
         }
         catch (Exception ex)
         {
@@ -93,22 +110,37 @@ public sealed class WindowMonitor : IDisposable
         }
     }
 
-    private WindowSnapshot? CaptureWindow(nint hwnd)
+    private async Task ProcessPendingEventsAsync()
     {
-        var qpc = _clock.GetTimestamp();
-        var threadId = GetWindowThreadProcessId(hwnd, out var processId);
-        if (processId == 0)
+        await foreach (var pending in _pendingEvents.Reader.ReadAllAsync().ConfigureAwait(false))
+        {
+            try
+            {
+                var snapshot = BuildSnapshot(pending);
+                if (snapshot is not null)
+                    ForegroundChanged?.Invoke(snapshot);
+            }
+            catch (Exception ex)
+            {
+                MonitorError?.Invoke(ex.Message);
+            }
+        }
+    }
+
+    private WindowSnapshot? BuildSnapshot(PendingWindowEvent pending)
+    {
+        if (pending.ProcessId == 0)
             return null;
 
         return new WindowSnapshot(
-            qpc,
-            _clock.ToUtc(qpc),
-            hwnd,
-            processId,
-            threadId,
-            ReadProcessName(processId),
-            ReadWindowTitle(hwnd),
-            IsIconic(hwnd));
+            pending.QpcTimestamp,
+            _clock.ToUtc(pending.QpcTimestamp),
+            pending.Handle,
+            pending.ProcessId,
+            pending.ThreadId,
+            ReadProcessName(pending.ProcessId),
+            ReadWindowTitle(pending.Handle),
+            IsIconic(pending.Handle));
     }
 
     private static string ReadWindowTitle(nint hwnd)
@@ -142,8 +174,17 @@ public sealed class WindowMonitor : IDisposable
 
         Stop();
         _disposed = true;
+        _pendingEvents.Writer.TryComplete();
+        try { _worker.Wait(TimeSpan.FromSeconds(2)); }
+        catch { }
         GC.SuppressFinalize(this);
     }
+
+    private readonly record struct PendingWindowEvent(
+        long QpcTimestamp,
+        nint Handle,
+        uint ProcessId,
+        uint ThreadId);
 
     private delegate void WinEventDelegate(
         nint hWinEventHook,
