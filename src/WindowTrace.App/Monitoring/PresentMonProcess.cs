@@ -14,11 +14,17 @@ public sealed class PresentMonProcess : IAsyncDisposable
     private readonly QpcClock _clock;
     private Process? _process;
     private string[]? _headers;
+    private readonly FrameMetricsAggregator _metrics;
     private bool _disposed;
 
-    public PresentMonProcess(QpcClock clock) => _clock = clock;
+    public PresentMonProcess(QpcClock clock)
+    {
+        _clock = clock;
+        _metrics = new FrameMetricsAggregator(clock);
+    }
 
     public event Action<DiagnosticEvent>? FrameReceived;
+    public event Action<DiagnosticEvent>? RenderingSummaryReceived;
     public event Action<string>? StatusChanged;
 
     public bool IsRunning => _process is { HasExited: false };
@@ -132,6 +138,10 @@ public sealed class PresentMonProcess : IAsyncDisposable
                 null,
                 null,
                 details));
+
+            var summary = _metrics.AddFrame(eventQpc, fields);
+            if (summary is not null)
+                RenderingSummaryReceived?.Invoke(summary);
         }
         catch (Exception ex)
         {
