@@ -20,7 +20,9 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
         "Microsoft-Windows-Win32k",
         "Microsoft-Windows-Dwm-Core",
         "Microsoft-Windows-DxgKrnl",
-        "Microsoft-Windows-DXGI"
+        "Microsoft-Windows-DXGI",
+        "Microsoft-Windows-Kernel-Process",
+        "Microsoft-Windows-Kernel-Power"
     ];
 
     private readonly QpcClock _clock;
