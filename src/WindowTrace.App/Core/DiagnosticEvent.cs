@@ -27,4 +27,6 @@ public sealed record WindowSnapshot(
     bool IsMinimized,
     string EventType = "ForegroundChanged",
     int ObjectId = 0,
-    int ChildId = 0);
+    int ChildId = 0,
+    nint? FocusedWindowHandle = null,
+    uint? GuiThreadFlags = null);
