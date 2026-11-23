@@ -372,6 +372,12 @@ public partial class MainWindow : Window
     {
         await StartCpuSamplerAsync(processId);
         await StartGpuSamplerAsync(processId);
+
+        var previousPresentMon = _presentMon;
+        _presentMon = null;
+        if (previousPresentMon is not null)
+            await previousPresentMon.DisposeAsync();
+
         StartPresentMon(processId);
     }
 
@@ -676,6 +682,13 @@ public partial class MainWindow : Window
 
         if (_etwCollector is null)
             return;
+
+        if (!_etwCollector.IsRunning)
+        {
+            OnCollectorWarning("ETW realtime consumer stopped unexpectedly. ETW evidence after this point is unavailable; the session report will mark this collection gap.");
+            await StopEtwCollectorAsync();
+            return;
+        }
 
         var lost = _etwCollector.EventsLost;
         if (lost >= 0 && lost != _lastReportedEtwEventsLost)
