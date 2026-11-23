@@ -24,6 +24,28 @@ public sealed class CoreTests
         Assert.Equal(1, buffer.DroppedEvents);
     }
 
+    [Theory]
+    [InlineData("Microsoft-Windows-DxgKrnl", "Profiler/Start", "Profiler", 14968u, 14968u, false)]
+    [InlineData("Microsoft-Windows-DxgKrnl", "QueuePacket/Start", "QueuePacket", 14968u, 14968u, true)]
+    [InlineData("Microsoft-Windows-Win32k", "WakeInputIdle", "WakeInputIdle", 14968u, 14968u, true)]
+    [InlineData("Microsoft-Windows-Win32k", "WakeInputIdle", "WakeInputIdle", 27360u, 14968u, false)]
+    [InlineData("Microsoft-Windows-Dwm-Core", "SCHEDULE_PRESENT/Start", "SCHEDULE_PRESENT", 2032u, 14968u, true)]
+    [InlineData("Microsoft-Windows-DXGI", "IDXGISwapChain_Present/Start", "Present", 14968u, 14968u, true)]
+    [InlineData("Microsoft-Windows-DXGI", "IDXGISwapChain_GetDesc/Start", "GetDesc", 14968u, 14968u, false)]
+    [InlineData("NT Kernel Logger", "DPC/Start", "DPC", 4u, 14968u, true)]
+    [InlineData("NT Kernel Logger", "CSwitch", "CSwitch", 4u, 14968u, false)]
+    public void EtwEventFilter_PersistsOnlyDiagnosticEventFamilies(
+        string provider,
+        string eventName,
+        string taskName,
+        uint processId,
+        uint targetProcessId,
+        bool expected)
+    {
+        Assert.Equal(expected, EtwEventFilter.ShouldPersist(
+            provider, eventName, taskName, processId, targetProcessId));
+    }
+
     [Fact]
     public void QpcClock_UsesMonotonicTimestamps()
     {
