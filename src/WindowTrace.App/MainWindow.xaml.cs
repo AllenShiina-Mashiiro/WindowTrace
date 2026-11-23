@@ -440,7 +440,7 @@ public partial class MainWindow : Window
         if (_isClosing)
             return;
 
-        Dispatcher.BeginInvoke(() =>
+        Dispatcher.InvokeAsync(() =>
         {
             FooterText.Text = message;
         });
@@ -451,7 +451,7 @@ public partial class MainWindow : Window
         if (_isClosing)
             return;
 
-        Dispatcher.BeginInvoke(() =>
+        Dispatcher.InvokeAsync(() =>
         {
             FooterText.Text = message;
             StatusText.Text = _sessions.State.ToString();
@@ -463,7 +463,7 @@ public partial class MainWindow : Window
         if (_isClosing)
             return;
 
-        Dispatcher.BeginInvoke(() => FooterText.Text = $"Window monitor warning: {message}");
+        Dispatcher.InvokeAsync(() => FooterText.Text = $"Window monitor warning: {message}");
     }
 
     private void AddSystemEvent(string eventType, string details)
@@ -492,7 +492,7 @@ public partial class MainWindow : Window
     {
         if (!Dispatcher.CheckAccess())
         {
-            Dispatcher.BeginInvoke(() => DisplayEvent(item));
+            Dispatcher.InvokeAsync(() => DisplayEvent(item));
             return;
         }
 
