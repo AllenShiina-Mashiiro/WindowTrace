@@ -54,6 +54,12 @@ public sealed class WindowMonitor : IDisposable
         }
     }
 
+    public WindowSnapshot? CaptureForeground()
+    {
+        var hwnd = GetForegroundWindow();
+        return hwnd == nint.Zero ? null : CaptureWindow(hwnd);
+    }
+
     public void Stop()
     {
         if (_hook == nint.Zero)
@@ -77,29 +83,32 @@ public sealed class WindowMonitor : IDisposable
 
         try
         {
-            var qpc = _clock.GetTimestamp();
-            var threadId = GetWindowThreadProcessId(hwnd, out var processId);
-            if (processId == 0)
-                return;
-
-            var title = ReadWindowTitle(hwnd);
-            var processName = ReadProcessName(processId);
-            var snapshot = new WindowSnapshot(
-                qpc,
-                _clock.ToUtc(qpc),
-                hwnd,
-                processId,
-                threadId,
-                processName,
-                title,
-                IsIconic(hwnd));
-
-            ForegroundChanged?.Invoke(snapshot);
+            var snapshot = CaptureWindow(hwnd);
+            if (snapshot is not null)
+                ForegroundChanged?.Invoke(snapshot);
         }
         catch (Exception ex)
         {
             MonitorError?.Invoke(ex.Message);
         }
+    }
+
+    private WindowSnapshot? CaptureWindow(nint hwnd)
+    {
+        var qpc = _clock.GetTimestamp();
+        var threadId = GetWindowThreadProcessId(hwnd, out var processId);
+        if (processId == 0)
+            return null;
+
+        return new WindowSnapshot(
+            qpc,
+            _clock.ToUtc(qpc),
+            hwnd,
+            processId,
+            threadId,
+            ReadProcessName(processId),
+            ReadWindowTitle(hwnd),
+            IsIconic(hwnd));
     }
 
     private static string ReadWindowTitle(nint hwnd)
@@ -144,6 +153,9 @@ public sealed class WindowMonitor : IDisposable
         int idChild,
         uint dwEventThread,
         uint dwmsEventTime);
+
+    [DllImport("user32.dll")]
+    private static extern nint GetForegroundWindow();
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern nint SetWinEventHook(
