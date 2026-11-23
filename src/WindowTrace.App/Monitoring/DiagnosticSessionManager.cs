@@ -186,6 +186,7 @@ public sealed class DiagnosticSessionManager
 
         _writer = new JsonlEventWriter(jsonlPath);
         _sessionId = sessionId;
+        LastCompletedReportPath = null;
         _sessionStartQpc = focusLostQpc;
         _postCaptureDeadlineQpc = null;
         State = DiagnosticSessionState.FocusLost;
