@@ -1,0 +1,70 @@
+<Window x:Class="WindowTrace.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="WindowTrace" Height="720" Width="1120"
+        MinHeight="520" MinWidth="820"
+        Background="#F4F6FA"
+        Closing="Window_Closing">
+    <Grid Margin="22">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <DockPanel Grid.Row="0" Margin="0,0,0,18">
+            <StackPanel>
+                <TextBlock Text="WindowTrace" FontSize="28" FontWeight="SemiBold" Foreground="#172033" />
+                <TextBlock Text="Windows foreground-window diagnostics" Margin="0,3,0,0" Foreground="#64748B" />
+            </StackPanel>
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                <Button x:Name="StartButton" Content="Start monitoring" Click="StartButton_Click"
+                        Padding="16,9" Margin="0,0,8,0" Background="#2868C7" Foreground="White" BorderThickness="0" />
+                <Button x:Name="StopButton" Content="Stop" Click="StopButton_Click"
+                        Padding="16,9" IsEnabled="False" />
+            </StackPanel>
+        </DockPanel>
+
+        <Border Grid.Row="1" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="10" Padding="16" Margin="0,0,0,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="Current status" Foreground="#64748B" FontSize="12" />
+                    <TextBlock x:Name="StatusText" Text="Not monitoring" FontSize="17" FontWeight="SemiBold" Margin="0,4,0,0" />
+                    <TextBlock x:Name="CurrentWindowText" Text="Waiting for monitoring to start" Foreground="#475569" Margin="0,6,0,0" TextWrapping="Wrap" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <TextBlock Text="Events captured" Foreground="#64748B" HorizontalAlignment="Right" />
+                    <TextBlock x:Name="EventCountText" Text="0" FontSize="25" FontWeight="SemiBold" HorizontalAlignment="Right" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="2" Background="#EEF4FF" BorderBrush="#D5E3FA" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,12">
+            <TextBlock x:Name="EnvironmentText" Foreground="#334155" TextWrapping="Wrap" />
+        </Border>
+
+        <Border Grid.Row="3" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="10" Padding="10">
+            <DataGrid ItemsSource="{Binding Events}" AutoGenerateColumns="False" IsReadOnly="True"
+                      CanUserAddRows="False" HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                      BorderThickness="0" Background="White" RowHeaderWidth="0">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="UTC time" Binding="{Binding UtcTimestamp, StringFormat={}{0:HH:mm:ss.fff}}" Width="145" />
+                    <DataGridTextColumn Header="Relative (ms)" Binding="{Binding RelativeMilliseconds, StringFormat={}{0:F3}}" Width="115" />
+                    <DataGridTextColumn Header="PID" Binding="{Binding ProcessId}" Width="80" />
+                    <DataGridTextColumn Header="Process" Binding="{Binding ProcessName}" Width="150" />
+                    <DataGridTextColumn Header="Window title" Binding="{Binding WindowTitle}" Width="*" />
+                    <DataGridTextColumn Header="Minimized" Binding="{Binding IsMinimized}" Width="95" />
+                </DataGrid.Columns>
+            </DataGrid>
+        </Border>
+
+        <TextBlock Grid.Row="4" x:Name="FooterText" Margin="2,10,2,0" Foreground="#64748B"
+                   Text="No keyboard contents are collected. CPU/GPU/ETW deep tracing and PresentMon are not yet implemented." TextWrapping="Wrap" />
+    </Grid>
+</Window>
