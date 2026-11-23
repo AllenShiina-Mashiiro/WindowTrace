@@ -138,7 +138,7 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
                 qpc,
                 _clock.Frequency,
                 _clock.ToUtc(qpc),
-                0,
+                _clock.ElapsedMilliseconds(_clock.AnchorTimestamp, qpc),
                 processId,
                 threadId,
                 null,
