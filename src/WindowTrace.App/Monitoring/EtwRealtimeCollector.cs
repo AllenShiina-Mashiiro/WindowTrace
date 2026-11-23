@@ -10,6 +10,14 @@ namespace WindowTrace.Monitoring;
 
 public sealed record EtwProviderStatus(string ProviderName, string Status, string? Details);
 
+public static class EtwTimestampNormalizer
+{
+    public static (long QpcTimestamp, string Quality, bool UsedFallback) Normalize(long eventQpc, long receiptQpc)
+        => eventQpc > 0
+            ? (eventQpc, "ETWEventQPC", false)
+            : (receiptQpc, "CollectorReceiptQPCFallback", true);
+}
+
 /// <summary>
 /// Real-time ETW consumer. Kernel scheduling events are enabled as a bounded,
 /// focused set; selected user-mode providers are discovered at runtime.
@@ -182,15 +190,12 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
         try
         {
 #pragma warning disable CS0618
-            var qpc = data.TimeStampQPC;
+            var timestamp = EtwTimestampNormalizer.Normalize(data.TimeStampQPC, _clock.GetTimestamp());
 #pragma warning restore CS0618
-            var timestampQuality = "ETWEventQPC";
-            if (qpc <= 0)
-            {
-                qpc = _clock.GetTimestamp();
-                timestampQuality = "CollectorReceiptQPCFallback";
+            var qpc = timestamp.QpcTimestamp;
+            var timestampQuality = timestamp.Quality;
+            if (timestamp.UsedFallback)
                 Interlocked.Increment(ref _timestampFallbackCount);
-            }
 
             var processId = data.ProcessID >= 0 ? (uint?)data.ProcessID : null;
             var threadId = data.ThreadID >= 0 ? (uint?)data.ThreadID : null;
@@ -241,15 +246,12 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
         try
         {
 #pragma warning disable CS0618
-            long qpc = data.TimeStampQPC;
+            var timestamp = EtwTimestampNormalizer.Normalize(data.TimeStampQPC, _clock.GetTimestamp());
 #pragma warning restore CS0618
-            var timestampQuality = "ETWEventQPC";
-            if (qpc <= 0)
-            {
-                qpc = _clock.GetTimestamp();
-                timestampQuality = "CollectorReceiptQPCFallback";
+            var qpc = timestamp.QpcTimestamp;
+            var timestampQuality = timestamp.Quality;
+            if (timestamp.UsedFallback)
                 Interlocked.Increment(ref _timestampFallbackCount);
-            }
 
             var processIdValue = data.ProcessID;
             var threadIdValue = data.ThreadID;
