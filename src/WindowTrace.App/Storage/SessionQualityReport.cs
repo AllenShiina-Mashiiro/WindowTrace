@@ -30,6 +30,9 @@ public sealed record SessionQualityReport(
     public long WriterErrorDroppedRecords { get; init; }
     public long? EtwTimestampFallbackCount { get; init; }
     public long? PriorityQueueOverflowDroppedRecords { get; init; }
+    public long? RegularBudgetDroppedRecords { get; init; }
+    public long? HardFileLimitDroppedRecords { get; init; }
+    public bool? RegularFileBudgetReached { get; init; }
     public int? PreRollEventsSelected { get; init; }
     public int? PreRollEventsQueued { get; init; }
     public int? PreRollEventsRejected { get; init; }
