@@ -89,7 +89,7 @@ public sealed class DiagnosticSessionManager
 
         lock (_gate)
         {
-            _writer?.TryWrite(item);
+            _writer?.TryWrite(ForActiveSession(item));
         }
     }
 
@@ -112,7 +112,7 @@ public sealed class DiagnosticSessionManager
                 }
                 else if (_writer is not null)
                 {
-                    _writer.TryWrite(item);
+                    _writer.TryWrite(ForActiveSession(item));
 
                     if (isTargetForeground)
                     {
@@ -165,8 +165,15 @@ public sealed class DiagnosticSessionManager
 
         var preRollStart = focusLostQpc - (long)(_clock.Frequency * 3d);
         foreach (var priorEvent in _buffer.Snapshot().Where(e => e.QpcTimestamp >= preRollStart))
-            _writer.TryWrite(priorEvent);
+            _writer.TryWrite(ForActiveSession(priorEvent));
     }
+
+    private DiagnosticEvent ForActiveSession(DiagnosticEvent item)
+        => item with
+        {
+            SessionId = _sessionId,
+            RelativeMilliseconds = _clock.ElapsedMilliseconds(_sessionStartQpc, item.QpcTimestamp)
+        };
 
     public async Task CheckPostCaptureDeadlineAsync()
     {
