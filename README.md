@@ -10,7 +10,7 @@ It is designed to collect timestamped observations across window focus, CPU sche
 - ETW real-time collection through Microsoft.Diagnostics.Tracing.TraceEvent.
 - PresentMon launched as a separate process.
 - QPC timestamps as the primary event clock, anchored to `GetSystemTimePreciseAsFileTime` for UTC conversion.
-- Focus-triggered diagnostic sessions with a 3-second pre-roll and 5-second post-focus capture.
+- Focus-triggered diagnostic sessions with an automatically warmed 3-second rolling pre-roll and adaptive 1.5–3-second post-focus capture.
 - Bounded in-memory history and a per-session JSONL size limit.
 - JSONL as the authoritative event stream; CSV as a flattened export.
 - Runtime detection of ETW providers and GPU performance counter availability.
@@ -34,8 +34,10 @@ Every session records Windows version/build, DisplayVersion, UBR (when readable)
   - target loses foreground: session starts;
   - previous 3 seconds are copied from the rolling event buffer;
   - background events continue to be written;
-  - target regains foreground: capture continues for 5 seconds;
-  - leaving again during post-capture returns the session to background capture.
+  - target regains foreground: capture continues for at least 1.5 seconds, then completes as soon as post-focus CPU and GPU samples are present; a 3-second hard maximum prevents unnecessary waiting;
+  - leaving again during post-capture cancels the completion window and returns the session to background capture; the next return starts a fresh adaptive post-focus window.
+- The UI reports rolling pre-roll readiness automatically; users do not need to time the 3-second warm-up themselves.
+- High-volume DWM, kernel-owned DxgKrnl VSync DPC, and system DPC/ISR event families are rate-limited; kernel-owned DxgKrnl queue/scheduler noise is excluded from persisted records.
 - Real-time ETW consumer for kernel Thread lifecycle and ContextSwitch events, plus runtime provider checks for Win32k, DWM, DxgKrnl, DXGI, Kernel-Process and Kernel-Power. Kernel thread IDs are associated with PIDs using a one-time read-only enumeration of the selected process's threads, kernel thread lifecycle payloads and the selected game window's GUI thread. Only context switches associated with mapped target-process threads are persisted as target scheduling events. The post-focus summary also counts system-wide DPC and ISR events as possible interrupt pressure indicators. Target-thread ReadyThread events are correlated with the next target-thread context switch to calculate a QPC ready-to-running scheduler interval; this is not input-to-game latency.
 - 1-second system CPU and target-process CPU sampling.
 - Optional PDH GPU Engine utilization and GPU memory counters, where the local Windows counter set supports them.
