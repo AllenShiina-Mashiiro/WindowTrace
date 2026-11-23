@@ -66,7 +66,7 @@ public sealed class CpuSampler : IAsyncDisposable
                     currentQpc,
                     _clock.Frequency,
                     _clock.ToUtc(currentQpc),
-                    0,
+                    _clock.ElapsedMilliseconds(_clock.AnchorTimestamp, currentQpc),
                     processId,
                     null,
                     null,
