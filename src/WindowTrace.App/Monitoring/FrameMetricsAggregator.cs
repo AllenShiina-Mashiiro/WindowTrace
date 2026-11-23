@@ -69,7 +69,8 @@ public sealed class FrameMetricsAggregator
         var dropped = Read(fields, "Dropped");
 
         var details =
-            $"FrameTimeSource={frameTimeSource};SampleCount={values.Length};FPS={1000d / average:F2};" +
+            $"FrameTimeSource={frameTimeSource};SummaryTimestampQuality={(qpcIsFrameTimestamp ? "PresentMonQpc" : "ConsumerReceiptQpc")};" +
+            $"SampleCount={values.Length};FPS={1000d / average:F2};"
             $"AverageFrameTimeMs={average:F3};FrameTimeVarianceMs2={variance:F4};" +
             $"FrameTimeStdDevMs={Math.Sqrt(variance):F3};FrameTimeP95Ms={ordered[p95Index]:F3};" +
             $"FrameTimeMinMs={ordered[0]:F3};FrameTimeMaxMs={ordered[^1]:F3};" +
