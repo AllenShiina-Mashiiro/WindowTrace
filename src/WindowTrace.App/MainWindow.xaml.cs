@@ -21,6 +21,7 @@ public partial class MainWindow : Window
 
     private EtwRealtimeCollector? _etwCollector;
     private CpuSampler? _cpuSampler;
+    private GpuPdhSampler? _gpuSampler;
     private PresentMonProcess? _presentMon;
     private WindowSnapshot? _lastForegroundSnapshot;
     private bool _isMonitoring;
@@ -204,6 +205,12 @@ public partial class MainWindow : Window
 
     private async Task StopPresentMonAndRestartAsync(uint targetPid)
     {
+        if (_gpuSampler is not null)
+        {
+            await _gpuSampler.DisposeAsync();
+            _gpuSampler = null;
+        }
+
         if (_presentMon is not null)
         {
             await _presentMon.DisposeAsync();
@@ -216,6 +223,7 @@ public partial class MainWindow : Window
     private void StartTargetCollectors(uint processId)
     {
         _ = StartCpuSamplerAsync(processId);
+        _ = StartGpuSamplerAsync(processId);
         StartPresentMon(processId);
     }
 
@@ -239,6 +247,32 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             OnCollectorWarning($"CPU sampler could not start: {ex.Message}");
+        }
+    }
+
+    private async Task StartGpuSamplerAsync(uint processId)
+    {
+        if (_gpuSampler is not null)
+        {
+            await _gpuSampler.DisposeAsync();
+            _gpuSampler = null;
+        }
+
+        var sampler = new GpuPdhSampler(_clock);
+        sampler.SampleReceived += OnGpuSample;
+        sampler.Warning += OnCollectorWarning;
+        _gpuSampler = sampler;
+
+        try
+        {
+            sampler.Start(processId);
+            OnCollectorWarning($"GPU PDH sampler started. Available counter groups: {string.Join(", ", sampler.AvailableCounters)}");
+        }
+        catch (Exception ex)
+        {
+            await sampler.DisposeAsync();
+            _gpuSampler = null;
+            OnCollectorWarning($"GPU counters unavailable: {ex.Message}");
         }
     }
 
@@ -321,6 +355,13 @@ public partial class MainWindow : Window
     {
         _sessions.PublishTelemetry(item);
         Dispatcher.InvokeAsync(() => DisplayEvent(item));
+    }
+
+    private void OnGpuSample(DiagnosticEvent item)
+    {
+        _sessions.PublishTelemetry(item);
+        if (DateTimeOffset.UtcNow.Second % 5 == 0)
+            Dispatcher.InvokeAsync(() => DisplayEvent(item));
     }
 
     private void OnPresentMonFrame(DiagnosticEvent item)
@@ -409,7 +450,7 @@ public partial class MainWindow : Window
     private async Task StopMonitoringAsync()
     {
         if (!_isMonitoring && _etwCollector is null && _cpuSampler is null &&
-            _presentMon is null && !_sessions.IsSessionActive)
+            _gpuSampler is null && _presentMon is null && !_sessions.IsSessionActive)
             return;
 
         _windowMonitor.Stop();
