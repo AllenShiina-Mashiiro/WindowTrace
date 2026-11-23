@@ -69,6 +69,18 @@ public sealed class CoreTests
                     qpc + (long)(clock.Frequency * 1.5d), clock.Frequency,
                     clock.ToUtc(qpc + (long)(clock.Frequency * 1.5d)), 1500,
                     4242, 88, null, null, null, "TargetThreadRole=Incoming;TargetThreadId=88;OldThreadId=12;OldThreadProcessId=4;NewThreadId=88;NewThreadProcessId=4242;OldThreadState=5;OldThreadWaitReason=6;OldThreadWaitMode=1;NewThreadWaitTime=1500", sessionId),
+                new DiagnosticEvent(Guid.NewGuid(), "Etw:DPC/Start", "NT Kernel Logger",
+                    qpc + (long)(clock.Frequency * 0.8d), clock.Frequency,
+                    clock.ToUtc(qpc + (long)(clock.Frequency * 0.8d)), 800,
+                    0, 0, null, null, null, "DPC metadata only", sessionId),
+                new DiagnosticEvent(Guid.NewGuid(), "Etw:ISR/Start", "NT Kernel Logger",
+                    qpc + (long)(clock.Frequency * 0.9d), clock.Frequency,
+                    clock.ToUtc(qpc + (long)(clock.Frequency * 0.9d)), 900,
+                    0, 0, null, null, null, "ISR metadata only", sessionId),
+                new DiagnosticEvent(Guid.NewGuid(), "Etw:ReadyThread", "NT Kernel Logger",
+                    qpc + (long)(clock.Frequency * 1.0d), clock.Frequency,
+                    clock.ToUtc(qpc + (long)(clock.Frequency * 1.0d)), 1000,
+                    4242, 88, null, null, null, "ReadyThread metadata only", sessionId),
                 new DiagnosticEvent(Guid.NewGuid(), "CollectorWarning", "WindowTrace",
                     qpc + (long)(clock.Frequency * 1.2d), clock.Frequency,
                     clock.ToUtc(qpc + (long)(clock.Frequency * 1.2d)), 1200,
@@ -109,6 +121,9 @@ public sealed class CoreTests
             Assert.Contains("Latest 1.5-second window after focus regained", report);
             Assert.Contains("Post-focus evidence summary", report);
             Assert.Contains("Win32k ETW events in interval", report);
+            Assert.Contains("System-wide DPC events in interval: 1", report);
+            Assert.Contains("System-wide ISR events in interval: 1", report);
+            Assert.Contains("System-wide ReadyThread events in interval: 1", report);
             Assert.Contains("Target threads mapped during the session: 1", report);
             Assert.Contains("Target-thread context switches in interval: 1 (incoming: 1; outgoing: 0)", report);
             Assert.Contains("NewThreadWaitTime raw values: 1500", report);
