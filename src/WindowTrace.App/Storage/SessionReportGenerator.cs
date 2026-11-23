@@ -108,7 +108,8 @@ public static class SessionReportGenerator
         report.AppendLine($"- Session ID: {sessionIdText}");
         report.AppendLine($"- Target: {targetName} (PID {targetPid})");
         report.AppendLine($"- Started (UTC): {startedUtc}");
-        report.AppendLine($"- OS: {metadata?.WindowsDisplayVersion ?? "Unknown"} / Build {buildNumber}.{revision}");
+        report.AppendLine($"- OS: {metadata?.WindowsDisplayVersion ?? "Unknown"} / {metadata?.WindowsEdition ?? "Unknown"} / Build {buildNumber}.{revision}");
+        report.AppendLine($"- Runtime / architecture: {metadata?.Runtime ?? "Unavailable"} / {metadata?.ProcessArchitecture ?? "Unavailable"}");
         report.AppendLine($"- CPU: {metadata?.CpuModel ?? "Unavailable"}; logical processors: {logicalProcessors}");
         report.AppendLine($"- Installed memory: {FormatBytes(metadata?.InstalledPhysicalMemoryBytes)}");
         report.AppendLine($"- BIOS / system: {metadata?.BiosVersion ?? "Unavailable"} / {metadata?.SystemManufacturer ?? "Unavailable"} {metadata?.SystemProductName ?? string.Empty}");
