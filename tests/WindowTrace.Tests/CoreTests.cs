@@ -246,8 +246,10 @@ public sealed class CoreTests
                 outsideQpc, clock.Frequency, clock.ToUtc(outsideQpc), 1600,
                 21948, 999u, null, "TestGame", null, "Outside interval", sessionId));
 
+            // Deliberately reverse file order: report counts must follow QPC window
+            // membership, not whether the FocusGained line appeared before an ETW row.
             await File.WriteAllLinesAsync(jsonlPath,
-                events.Select(item => System.Text.Json.JsonSerializer.Serialize(item)));
+                events.AsEnumerable().Reverse().Select(item => System.Text.Json.JsonSerializer.Serialize(item)));
 
             var report30Path = await SessionReportGenerator.WriteAsync(
                 jsonlPath, maximumPostFocusEtwRows: 30);
