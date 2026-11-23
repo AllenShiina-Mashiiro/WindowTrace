@@ -136,9 +136,11 @@ public sealed class DiagnosticSessionManager
 
     public void PublishTelemetry(DiagnosticEvent item)
     {
+        // Keep the rolling-buffer lock independent from the session-state lock:
+        // a pre-roll snapshot must never hold the same lock needed by ETW writers.
+        _buffer.Add(item);
         lock (_gate)
         {
-            _buffer.Add(item);
             if (_writer is not null)
             {
                 var accepted = _writer.TryWrite(ForActiveSession(item));
@@ -163,9 +165,9 @@ public sealed class DiagnosticSessionManager
     {
         string? status = null;
 
+        _buffer.Add(item);
         lock (_gate)
         {
-            _buffer.Add(item);
             if (_targetProcessId is uint targetPid)
             {
                 var wasTargetForeground = _lastForegroundProcessId == targetPid;
