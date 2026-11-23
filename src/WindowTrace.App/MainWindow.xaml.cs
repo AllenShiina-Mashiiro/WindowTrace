@@ -606,8 +606,33 @@ public partial class MainWindow : Window
         try
         {
             using var process = Process.GetProcessById(checked((int)processId));
+            var threadCount = 0;
             foreach (ProcessThread thread in process.Threads)
+            {
                 _etwCollector.RegisterTargetProcessThread(processId, checked((uint)thread.Id));
+                threadCount++;
+            }
+
+            var kernelStatus = _etwCollector.ProviderStatuses
+                .FirstOrDefault(provider => provider.ProviderName.Equals("NT Kernel Logger", StringComparison.OrdinalIgnoreCase));
+            var qpc = _clock.GetTimestamp();
+            _sessions.PublishTelemetry(new DiagnosticEvent(
+                Guid.NewGuid(),
+                "TargetThreadEnumeration",
+                "ProcessThreadEnumeration",
+                qpc,
+                _clock.Frequency,
+                _clock.ToUtc(qpc),
+                _clock.ElapsedMilliseconds(_clock.AnchorTimestamp, qpc),
+                processId,
+                null,
+                null,
+                process.ProcessName,
+                null,
+                $"EnumeratedThreadCount={threadCount};KernelEtwStatus={kernelStatus?.Status ?? "Unavailable"};KernelEtwDetails={kernelStatus?.Details ?? "CollectorUnavailable"}"));
+
+            if (threadCount == 0)
+                OnCollectorWarning("Target process thread enumeration returned zero threads. Target-thread scheduling evidence may be unavailable.");
         }
         catch (Exception ex)
         {
