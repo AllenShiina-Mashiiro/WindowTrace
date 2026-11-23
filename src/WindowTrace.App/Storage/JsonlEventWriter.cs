@@ -7,9 +7,9 @@ using WindowTrace.Core;
 namespace WindowTrace.Storage;
 
 /// <summary>
-/// Bounded asynchronous JSONL writer. Records are flushed in batches to reduce
-/// per-event disk overhead. Both queue overflow and the per-session file-size
-/// limit are counted and exposed to the quality report.
+/// Bounded asynchronous JSONL writer with a separately reserved critical-event
+/// queue and file-byte reserve. High-volume telemetry cannot consume the capacity
+/// needed for focus/session markers and collector health events.
 /// </summary>
 public sealed class JsonlEventWriter : IAsyncDisposable
 {
@@ -18,32 +18,53 @@ public sealed class JsonlEventWriter : IAsyncDisposable
         WriteIndented = false
     };
 
-    private readonly Channel<DiagnosticEvent> _channel;
+    private readonly Channel<DiagnosticEvent> _priorityChannel;
+    private readonly Channel<DiagnosticEvent> _normalChannel;
     private readonly Task _worker;
     private readonly string _path;
     private readonly CancellationTokenSource _cancellation = new();
+    private readonly long _criticalReserveBytes;
     private long _queueOverflowDroppedRecords;
+    private long _priorityQueueOverflowDroppedRecords;
     private long _fileLimitDroppedRecords;
     private long _writerErrorDroppedRecords;
+    private long _preRollRecordsWritten;
     private long _bytesWritten;
-    private int _limitReached;
+    private int _regularLimitReached;
+    private int _totalLimitReached;
     private Exception? _lastError;
 
     public JsonlEventWriter(
         string path,
         int queueCapacity = 32768,
-        long maxBytes = 256L * 1024 * 1024)
+        long maxBytes = 256L * 1024 * 1024,
+        int priorityQueueCapacity = 4096,
+        long criticalReserveBytes = 2L * 1024 * 1024)
     {
         if (maxBytes < 1024 * 1024)
             throw new ArgumentOutOfRangeException(nameof(maxBytes), "Session size limit must be at least 1 MiB.");
+        if (queueCapacity < 1)
+            throw new ArgumentOutOfRangeException(nameof(queueCapacity));
+        if (priorityQueueCapacity < 1)
+            throw new ArgumentOutOfRangeException(nameof(priorityQueueCapacity));
+        if (criticalReserveBytes < 0)
+            throw new ArgumentOutOfRangeException(nameof(criticalReserveBytes));
 
         _path = path;
         MaxBytes = maxBytes;
+        _criticalReserveBytes = Math.Min(criticalReserveBytes, Math.Max(64 * 1024, maxBytes / 8));
         var directory = Path.GetDirectoryName(path);
         if (!string.IsNullOrWhiteSpace(directory))
             Directory.CreateDirectory(directory);
 
-        _channel = Channel.CreateBounded<DiagnosticEvent>(
+        _priorityChannel = Channel.CreateBounded<DiagnosticEvent>(
+            new BoundedChannelOptions(priorityQueueCapacity)
+            {
+                FullMode = BoundedChannelFullMode.Wait,
+                SingleReader = true,
+                SingleWriter = false
+            });
+        _normalChannel = Channel.CreateBounded<DiagnosticEvent>(
             new BoundedChannelOptions(queueCapacity)
             {
                 FullMode = BoundedChannelFullMode.Wait,
@@ -55,13 +76,18 @@ public sealed class JsonlEventWriter : IAsyncDisposable
     }
 
     public long QueueOverflowDroppedRecords => Interlocked.Read(ref _queueOverflowDroppedRecords);
+    public long PriorityQueueOverflowDroppedRecords => Interlocked.Read(ref _priorityQueueOverflowDroppedRecords);
     public long FileLimitDroppedRecords => Interlocked.Read(ref _fileLimitDroppedRecords);
     public long WriterErrorDroppedRecords => Interlocked.Read(ref _writerErrorDroppedRecords);
+    public long PreRollRecordsWritten => Interlocked.Read(ref _preRollRecordsWritten);
     public long DroppedRecords =>
         QueueOverflowDroppedRecords + FileLimitDroppedRecords + WriterErrorDroppedRecords;
     public long BytesWritten => Interlocked.Read(ref _bytesWritten);
     public long MaxBytes { get; }
-    public bool LimitReached => Volatile.Read(ref _limitReached) != 0;
+    public long CriticalReserveBytes => _criticalReserveBytes;
+    public bool LimitReached =>
+        Volatile.Read(ref _regularLimitReached) != 0 || Volatile.Read(ref _totalLimitReached) != 0;
+    public bool TotalFileLimitReached => Volatile.Read(ref _totalLimitReached) != 0;
     public Exception? LastError => _lastError;
     public string FilePath => _path;
 
@@ -73,20 +99,45 @@ public sealed class JsonlEventWriter : IAsyncDisposable
             return false;
         }
 
-        if (LimitReached)
+        var isPriority = IsPriorityRecord(item);
+        if (TotalFileLimitReached || (!isPriority && Volatile.Read(ref _regularLimitReached) != 0))
         {
             Interlocked.Increment(ref _fileLimitDroppedRecords);
             return false;
         }
 
-        if (!_channel.Writer.TryWrite(item))
+        var channel = isPriority ? _priorityChannel : _normalChannel;
+        if (!channel.Writer.TryWrite(item))
         {
             Interlocked.Increment(ref _queueOverflowDroppedRecords);
+            if (isPriority)
+                Interlocked.Increment(ref _priorityQueueOverflowDroppedRecords);
             return false;
         }
 
         return true;
     }
+
+    private static bool IsPriorityRecord(DiagnosticEvent item)
+        => item.EventType is
+            "DiagnosticSessionStarted" or
+            "DiagnosticSessionCompleted" or
+            "DiagnosticSessionStopped" or
+            "FocusLost" or
+            "FocusGained" or
+            "FocusLostAgain" or
+            "InputTestMarker" or
+            "TargetSelected" or
+            "EtwProviderCapability" or
+            "PresentMonCapability" or
+            "TargetThreadEnumeration" or
+            "CollectorWarning" or
+            "WindowMonitorWarning" or
+            "WindowMonitorQueueDrops" or
+            "EtwEventsLostCounter" or
+            "ForegroundChanged" or
+            "WindowMinimizeStarted" or
+            "WindowRestored";
 
     private async Task WriteLoopAsync()
     {
@@ -101,32 +152,56 @@ public sealed class JsonlEventWriter : IAsyncDisposable
                 FileOptions.Asynchronous | FileOptions.SequentialScan);
             await using var writer = new StreamWriter(stream, new UTF8Encoding(false));
 
-            var batch = new List<DiagnosticEvent>(256);
-            while (await _channel.Reader.WaitToReadAsync(_cancellation.Token).ConfigureAwait(false))
+            var batch = new List<(DiagnosticEvent Item, bool IsPriority)>(256);
+            while (true)
             {
                 batch.Clear();
-                while (batch.Count < 256 && _channel.Reader.TryRead(out var item))
-                    batch.Add(item);
 
-                foreach (var item in batch)
+                // Always drain critical markers first. Normal telemetry is kept
+                // below the reserved byte budget even if it arrived earlier.
+                while (batch.Count < 256 && _priorityChannel.Reader.TryRead(out var priorityItem))
+                    batch.Add((priorityItem, true));
+                while (batch.Count < 256 && _normalChannel.Reader.TryRead(out var normalItem))
+                    batch.Add((normalItem, false));
+
+                if (batch.Count == 0)
                 {
-                    if (LimitReached)
-                    {
-                        Interlocked.Increment(ref _fileLimitDroppedRecords);
-                        continue;
-                    }
+                    if (_priorityChannel.Reader.Completion.IsCompleted &&
+                        _normalChannel.Reader.Completion.IsCompleted)
+                        break;
 
-                    var json = JsonSerializer.Serialize(item, JsonOptions);
+                    var priorityWait = _priorityChannel.Reader.WaitToReadAsync(_cancellation.Token).AsTask();
+                    var normalWait = _normalChannel.Reader.WaitToReadAsync(_cancellation.Token).AsTask();
+                    await Task.WhenAny(priorityWait, normalWait).ConfigureAwait(false);
+                    continue;
+                }
+
+                foreach (var entry in batch)
+                {
+                    var json = JsonSerializer.Serialize(entry.Item, JsonOptions);
                     var lineBytes = Encoding.UTF8.GetByteCount(json) + Encoding.UTF8.GetByteCount(Environment.NewLine);
-                    if (Interlocked.Read(ref _bytesWritten) + lineBytes > MaxBytes)
+                    var currentBytes = Interlocked.Read(ref _bytesWritten);
+
+                    if (entry.IsPriority)
                     {
-                        Interlocked.Exchange(ref _limitReached, 1);
+                        if (currentBytes + lineBytes > MaxBytes)
+                        {
+                            Interlocked.Exchange(ref _totalLimitReached, 1);
+                            Interlocked.Increment(ref _fileLimitDroppedRecords);
+                            continue;
+                        }
+                    }
+                    else if (currentBytes + lineBytes > MaxBytes - _criticalReserveBytes)
+                    {
+                        Interlocked.Exchange(ref _regularLimitReached, 1);
                         Interlocked.Increment(ref _fileLimitDroppedRecords);
                         continue;
                     }
 
                     await writer.WriteLineAsync(json).ConfigureAwait(false);
                     Interlocked.Add(ref _bytesWritten, lineBytes);
+                    if (entry.Item.CapturePhase == "PreRoll")
+                        Interlocked.Increment(ref _preRollRecordsWritten);
                 }
 
                 await writer.FlushAsync().ConfigureAwait(false);
@@ -138,14 +213,17 @@ public sealed class JsonlEventWriter : IAsyncDisposable
         catch (Exception ex)
         {
             _lastError = ex;
-            while (_channel.Reader.TryRead(out _))
+            while (_priorityChannel.Reader.TryRead(out _))
+                Interlocked.Increment(ref _writerErrorDroppedRecords);
+            while (_normalChannel.Reader.TryRead(out _))
                 Interlocked.Increment(ref _writerErrorDroppedRecords);
         }
     }
 
     public async ValueTask DisposeAsync()
     {
-        _channel.Writer.TryComplete();
+        _priorityChannel.Writer.TryComplete();
+        _normalChannel.Writer.TryComplete();
         try
         {
             await _worker.WaitAsync(TimeSpan.FromSeconds(15));
@@ -165,7 +243,9 @@ public sealed class JsonlEventWriter : IAsyncDisposable
         {
             if (_worker.IsCompleted)
             {
-                while (_channel.Reader.TryRead(out _))
+                while (_priorityChannel.Reader.TryRead(out _))
+                    Interlocked.Increment(ref _writerErrorDroppedRecords);
+                while (_normalChannel.Reader.TryRead(out _))
                     Interlocked.Increment(ref _writerErrorDroppedRecords);
             }
 
