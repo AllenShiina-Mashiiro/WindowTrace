@@ -106,6 +106,11 @@ public sealed class WindowMonitor : IDisposable
     public WindowSnapshot? CaptureForeground()
     {
         var hwnd = GetForegroundWindow();
+        return CaptureWindow(hwnd, "ForegroundChanged");
+    }
+
+    public WindowSnapshot? CaptureWindow(nint hwnd, string eventType = "TargetWindowSelection")
+    {
         if (hwnd == nint.Zero)
             return null;
 
@@ -114,7 +119,8 @@ public sealed class WindowMonitor : IDisposable
         if (processId == 0)
             return null;
 
-        return BuildSnapshot(new PendingWindowEvent(qpc, hwnd, processId, threadId, "ForegroundChanged", 0, 0, Volatile.Read(ref _generation)));
+        return BuildSnapshot(new PendingWindowEvent(
+            qpc, hwnd, processId, threadId, eventType, 0, 0, Volatile.Read(ref _generation)));
     }
 
     public void Stop()
