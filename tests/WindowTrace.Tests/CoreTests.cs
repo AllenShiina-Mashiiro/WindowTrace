@@ -69,6 +69,27 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public void FrameMetricsAggregator_DoesNotTreatReceiptTimeAsFrameInterval()
+    {
+        var clock = new QpcClock();
+        var aggregator = new FrameMetricsAggregator(clock);
+        var fields = new Dictionary<string, string>
+        {
+            ["ProcessID"] = "4242",
+            ["Application"] = "TestGame"
+        };
+
+        DiagnosticEvent? summary = null;
+        for (var i = 0; i <= 120; i++)
+        {
+            var qpc = clock.AnchorTimestamp + (long)(clock.Frequency * i / 60d);
+            summary = aggregator.AddFrame(qpc, fields, qpcIsFrameTimestamp: false) ?? summary;
+        }
+
+        Assert.Null(summary);
+    }
+
+    [Fact]
     public async Task DiagnosticSessionManager_CapturesPreRollAndFocusTransitions()
     {
         var directory = Path.Combine(Path.GetTempPath(), "WindowTrace.Tests", Guid.NewGuid().ToString("N"));
