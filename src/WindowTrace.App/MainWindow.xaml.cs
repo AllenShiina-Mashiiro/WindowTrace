@@ -275,7 +275,7 @@ public partial class MainWindow : Window
             await StopTargetCollectorsAsync();
             await StopEtwCollectorAsync();
             _sessions.ClearTarget();
-            TargetText.Text = "No target selected. Bring the game to the foreground, then select it below.";
+            TargetText.Text = "No target selected. Click the delayed picker, then switch to the game within 3 seconds.";
         }
         catch (Exception ex)
         {
