@@ -258,6 +258,7 @@ public partial class MainWindow : Window
             {
                 EnsureEtwCollectorStarted();
                 await StartTargetCollectorsAsync(snapshot.ProcessId);
+                FooterText.Text = "Target selected. CPU/GPU/PresentMon and ETW collectors are starting; wait at least 3 seconds before reproducing the focus switch.";
             }
         }
         catch (Exception ex)
