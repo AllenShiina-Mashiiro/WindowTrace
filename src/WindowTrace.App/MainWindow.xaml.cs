@@ -405,6 +405,11 @@ public partial class MainWindow : Window
             throw new InvalidOperationException("A diagnostic session is active. Wait for it to finish before changing the target.");
 
         var currentForeground = _windowMonitor.CaptureForeground();
+        var currentWindow = _windowMonitor.CaptureWindow(snapshot.Handle);
+        if (currentWindow is null || currentWindow.ProcessId != snapshot.ProcessId)
+            throw new InvalidOperationException("The selected game window has closed or changed. Refresh the window list and select it again.");
+
+        snapshot = currentWindow;
         await StopTargetCollectorsAsync();
         _sessions.SetTarget(snapshot.ProcessId, snapshot.ProcessName, currentForeground?.ProcessId);
         TargetText.Text = $"Selected: {snapshot.ProcessName} (PID {snapshot.ProcessId}) | {snapshot.WindowTitle}";
@@ -442,7 +447,7 @@ public partial class MainWindow : Window
             await StopTargetCollectorsAsync();
             await StopEtwCollectorAsync();
             _sessions.ClearTarget();
-            TargetText.Text = "No target selected. Click the delayed picker, then switch to the game within 3 seconds.";
+            TargetText.Text = "Step 1: Select the game window from the running-window list. Then start monitoring.";
         }
         catch (Exception ex)
         {
