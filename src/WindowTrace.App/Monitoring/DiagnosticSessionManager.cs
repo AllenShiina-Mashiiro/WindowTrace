@@ -322,7 +322,7 @@ public sealed class DiagnosticSessionManager
         {
             await writer.DisposeAsync();
             await WriteQualityReportAsync(writer, context!, completionQpc, "MonitoringStopped");
-            StatusChanged?.Invoke($"Diagnostic session stopped and saved: {writer.FilePath}. Queue drops: {writer.DroppedRecords}; size limit reached: {writer.LimitReached}.");
+            StatusChanged?.Invoke($"Diagnostic session stopped and saved: {writer.FilePath}. Records not persisted: {writer.DroppedRecords}; size limit reached: {writer.LimitReached}.");
         }
     }
 
