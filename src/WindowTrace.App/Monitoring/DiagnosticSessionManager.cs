@@ -159,7 +159,7 @@ public sealed class DiagnosticSessionManager
                     if (item.EventType == "CpuSample")
                         _postFocusCpuSampleSeen = true;
                     else if (item.EventType == "GpuPdhSample" &&
-                             !item.Details.Contains("No GPU counter instances returned valid data", StringComparison.OrdinalIgnoreCase))
+                             !(item.Details?.Contains("No GPU counter instances returned valid data", StringComparison.OrdinalIgnoreCase) ?? false))
                         _postFocusGpuSampleSeen = true;
                     else if (item.EventType is "PresentMonFrame" or "RenderingSummary")
                         _postFocusFrameSampleSeen = true;
