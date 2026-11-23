@@ -36,7 +36,7 @@ Every session records Windows version/build, DisplayVersion, UBR (when readable)
   - background events continue to be written;
   - target regains foreground: capture continues for 5 seconds;
   - leaving again during post-capture returns the session to background capture.
-- Real-time ETW consumer for kernel Process, Thread, ContextSwitch and Dispatcher events, plus runtime provider checks for Win32k, DWM, DxgKrnl, DXGI, Kernel-Process and Kernel-Power. ETW is system-wide; the captured trace can include events from other processes.
+- Real-time ETW consumer for kernel Thread lifecycle and ContextSwitch events, plus runtime provider checks for Win32k, DWM, DxgKrnl, DXGI, Kernel-Process and Kernel-Power. Kernel thread IDs are associated with PIDs using thread lifecycle payloads, the event header and the selected game window's GUI thread. Only context switches associated with mapped target-process threads are persisted as target scheduling events; other provider metadata can still be system-wide.
 - 1-second system CPU and target-process CPU sampling.
 - Optional PDH GPU Engine utilization and GPU memory counters, where the local Windows counter set supports them.
 - Optional PresentMon 2.x child process, with per-swap-chain rolling FPS, average/p95/min/max frame time, frame-time variance and standard deviation derived from frame intervals. Per-frame GPU Busy/Wait and Present Mode fields are preserved. The process is filtered to the selected PID and started with `--qpc_time`, `--output_stdout`, `--no_console_stats` and `--no_track_input`.
@@ -47,7 +47,7 @@ Every session records Windows version/build, DisplayVersion, UBR (when readable)
 
 ### Not yet claimed as fully implemented or validated
 
-- Complete reconstruction of every target thread's Running/Ready/Waiting state and wait reason.
+- Complete reconstruction of every target thread's Running/Ready/Waiting state and wait reason. Target-thread context-switch observations are now PID-correlated, but unmapped threads, missing rundown events and Windows/provider-version differences can leave gaps.
 - Complete GPU scheduler queue reconstruction and driver-independent GPU Busy metrics.
 - Guaranteed availability of all PresentMon frame metrics on every GPU/driver/present path.
 - End-to-end input-to-game-response latency measurement.
