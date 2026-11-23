@@ -492,10 +492,13 @@ public partial class MainWindow : Window
         _sessions.PublishForeground(diagnosticEvent, snapshot.ProcessId);
         DisplayEvent(diagnosticEvent);
 
-        CurrentWindowText.Text =
-            $"{snapshot.ProcessName} (PID {snapshot.ProcessId}) | " +
-            $"HWND 0x{snapshot.Handle.ToInt64():X} | " +
-            $"{(string.IsNullOrWhiteSpace(snapshot.WindowTitle) ? "(untitled window)" : snapshot.WindowTitle)}";
+        Dispatcher.InvokeAsync(() =>
+        {
+            CurrentWindowText.Text =
+                $"{snapshot.ProcessName} (PID {snapshot.ProcessId}) | " +
+                $"HWND 0x{snapshot.Handle.ToInt64():X} | " +
+                $"{(string.IsNullOrWhiteSpace(snapshot.WindowTitle) ? "(untitled window)" : snapshot.WindowTitle)}";
+        });
     }
 
     private async void SessionTimer_Tick(object? sender, EventArgs e)
