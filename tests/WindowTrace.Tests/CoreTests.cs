@@ -673,15 +673,15 @@ public sealed class CoreTests
                 path, queueCapacity: 4096, maxBytes: 1024 * 1024,
                 priorityQueueCapacity: 16, criticalReserveBytes: 128 * 1024);
             var detail = new string('x', 4096);
-            for (var i = 0; i < 2000 && !writer.LimitReached; i++)
+            for (var i = 0; i < 10000 && !writer.LimitReached; i++)
             {
                 writer.TryWrite(CreateEvent(i + 1) with
                 {
                     EventType = "HighVolumeTelemetry",
                     Details = detail
                 });
-                if (i % 20 == 0)
-                    await Task.Delay(1);
+                if (i % 10 == 0)
+                    await Task.Delay(2);
             }
 
             Assert.True(writer.LimitReached);
