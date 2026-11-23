@@ -180,10 +180,8 @@ public partial class MainWindow : Window
                 if (initialForeground is not null)
                     RegisterTargetWindowThread(initialForeground);
                 await StartTargetCollectorsAsync(targetPid);
-            }
-            else
-            {
-                FooterText.Text = "Window monitor active. Select the game process to enable target-process CPU/GPU sampling and system-wide ETW diagnostics.";
+                StatusText.Text = $"Ready: waiting for { _sessions.TargetProcessName } to lose focus";
+                FooterText.Text = $"Monitoring is armed for {_sessions.TargetProcessName}. Switch to the game, wait at least 3 seconds, Alt+Tab to another app, then return. A session starts automatically on focus loss.";
             }
         }
         catch (Exception ex)
@@ -332,6 +330,13 @@ public partial class MainWindow : Window
 
             if (list.Items.Count > 0)
                 list.SelectedIndex = 0;
+            else
+                list.Items.Add(new ListBoxItem
+                {
+                    Content = "No visible application windows found. Launch the game, then click Refresh list.",
+                    IsEnabled = false,
+                    Padding = new Thickness(8)
+                });
         }
 
         var refreshButton = new Button { Content = "Refresh list", Padding = new Thickness(12, 6, 12, 6), Margin = new Thickness(0, 0, 8, 0) };
