@@ -91,7 +91,7 @@ A completed session normally produces:
 
 - `windowtrace-session-<timestamp>.jsonl` — event stream.
 - `windowtrace-session-<timestamp>.session.json` — OS/runtime/target metadata.
-- `windowtrace-session-<timestamp>.quality.json` — pre-roll coverage, buffer evictions, queue drops, file cap and writer errors.
+- `windowtrace-session-<timestamp>.quality.json` — pre-roll coverage, buffer evictions, ETW event-loss count, queue drops, file cap and writer errors.
 - Optional CSV export chosen by the user.
 
 The JSONL event stream preserves source and QPC fields. Event arrival order can differ between independent collectors; sort or correlate by `QpcTimestamp`, not by file line order.
