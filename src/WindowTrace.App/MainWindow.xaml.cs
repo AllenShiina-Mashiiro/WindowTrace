@@ -139,6 +139,8 @@ public partial class MainWindow : Window
             AddSystemEvent("MonitoringStarted", "Window monitor started; ETW starts when a target process is selected.");
 
             var initialForeground = _windowMonitor.CaptureForeground();
+            if (_sessions.TargetProcessId is not null)
+                _sessions.UpdateForegroundBaseline(initialForeground?.ProcessId);
             if (initialForeground is not null)
                 OnForegroundChanged(initialForeground);
 
