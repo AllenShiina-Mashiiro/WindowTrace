@@ -137,7 +137,7 @@ public static class SessionReportGenerator
             ? ((double)(last - first) * 1000d / metadata.QpcFrequency).ToString("F3", CultureInfo.InvariantCulture) + " ms"
             : "Unavailable";
         report.AppendLine($"- Event time span: {timeSpan}");
-        report.AppendLine($"- Pre-roll requested / observed: {quality?.RequestedPreRollMs.ToString("F0", CultureInfo.InvariantCulture) ?? "Unavailable"} / {quality?.ActualPreRollMs.ToString("F3", CultureInfo.InvariantCulture) ?? "Unavailable"} ms");
+        report.AppendLine($"- Pre-roll requested / observed: {quality?.RequestedPreRollMilliseconds.ToString("F0", CultureInfo.InvariantCulture) ?? "Unavailable"} / {quality?.ActualPreRollMilliseconds.ToString("F3", CultureInfo.InvariantCulture) ?? "Unavailable"} ms");
         report.AppendLine($"- Buffer evictions (start / end): {quality?.BufferEvictionsAtSessionStart.ToString(CultureInfo.InvariantCulture) ?? "Unavailable"} / {quality?.BufferEvictionsAtFinalization.ToString(CultureInfo.InvariantCulture) ?? "Unavailable"}");
         report.AppendLine($"- ETW events lost: {quality?.EtwEventsLostAtFinalization?.ToString(CultureInfo.InvariantCulture) ?? "Unavailable"}");
         report.AppendLine($"- Writer queue drops: {quality?.WriterQueueDroppedRecords.ToString(CultureInfo.InvariantCulture) ?? "Unavailable"}");
