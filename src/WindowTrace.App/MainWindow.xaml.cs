@@ -157,7 +157,7 @@ public partial class MainWindow : Window
             if (_sessions.TargetProcessId is not null)
                 _sessions.UpdateForegroundBaseline(initialForeground?.ProcessId);
             if (initialForeground is not null)
-                OnForegroundChanged(initialForeground);
+                PublishForegroundSnapshot(initialForeground);
 
             if (_sessions.TargetProcessId is uint targetPid)
             {
@@ -262,10 +262,27 @@ public partial class MainWindow : Window
             _sessions.SetTarget(snapshot.ProcessId, snapshot.ProcessName, snapshot.ProcessId);
             TargetText.Text = $"Target: {snapshot.ProcessName} (PID {snapshot.ProcessId}) | {snapshot.WindowTitle}";
             StatusText.Text = $"Target selected: {snapshot.ProcessName}";
+
+            var selectedQpc = _clock.GetTimestamp();
+            _sessions.PublishTelemetry(new DiagnosticEvent(
+                Guid.NewGuid(), "TargetSelected", "WindowTrace",
+                selectedQpc, _clock.Frequency, _clock.ToUtc(selectedQpc),
+                _clock.ElapsedMilliseconds(_clock.AnchorTimestamp, selectedQpc),
+                snapshot.ProcessId, snapshot.ThreadId, unchecked((ulong)snapshot.Handle),
+                snapshot.ProcessName, snapshot.WindowTitle,
+                "Target was selected using the delayed foreground picker."));
+
             if (_isMonitoring)
             {
                 EnsureEtwCollectorStarted();
                 await StartTargetCollectorsAsync(snapshot.ProcessId);
+
+                var currentForeground = _windowMonitor.CaptureForeground();
+                if (currentForeground is not null &&
+                    currentForeground.ProcessId != snapshot.ProcessId &&
+                    !_sessions.IsSessionActive)
+                    PublishForegroundSnapshot(currentForeground);
+
                 FooterText.Text = "Target selected. CPU/GPU/PresentMon and ETW collectors are starting; wait at least 3 seconds before reproducing the focus switch.";
             }
         }
@@ -480,6 +497,34 @@ public partial class MainWindow : Window
             await _presentMon.DisposeAsync();
             _presentMon = null;
         }
+    }
+
+    private void PublishForegroundSnapshot(WindowSnapshot snapshot)
+    {
+        var item = new DiagnosticEvent(
+            Guid.NewGuid(),
+            "ForegroundSnapshot",
+            "WindowPoll",
+            snapshot.QpcTimestamp,
+            _clock.Frequency,
+            snapshot.UtcTimestamp,
+            _clock.ElapsedMilliseconds(_clock.AnchorTimestamp, snapshot.QpcTimestamp),
+            snapshot.ProcessId,
+            snapshot.ThreadId,
+            unchecked((ulong)snapshot.Handle),
+            snapshot.ProcessName,
+            snapshot.WindowTitle,
+            $"IsMinimized={snapshot.IsMinimized};TimestampQuality=GetForegroundWindowSnapshotQpc");
+
+        _sessions.PublishForeground(item, snapshot.ProcessId);
+        DisplayEvent(item);
+        Dispatcher.InvokeAsync(() =>
+        {
+            CurrentWindowText.Text =
+                $"{snapshot.ProcessName} (PID {snapshot.ProcessId}) | " +
+                $"HWND 0x{snapshot.Handle.ToInt64():X} | " +
+                $"{(string.IsNullOrWhiteSpace(snapshot.WindowTitle) ? "(untitled window)" : snapshot.WindowTitle)}";
+        });
     }
 
     private void OnForegroundChanged(WindowSnapshot snapshot)
