@@ -202,6 +202,19 @@ public sealed class WindowMonitor : IDisposable
         if (pending.ProcessId == 0)
             return null;
 
+        nint? focusedWindowHandle = null;
+        uint? guiThreadFlags = null;
+        var guiInfo = new GuiThreadInfo
+        {
+            Size = (uint)Marshal.SizeOf<GuiThreadInfo>()
+        };
+
+        if (GetGUIThreadInfo(pending.ThreadId, ref guiInfo))
+        {
+            focusedWindowHandle = guiInfo.FocusWindow == nint.Zero ? null : guiInfo.FocusWindow;
+            guiThreadFlags = guiInfo.Flags;
+        }
+
         return new WindowSnapshot(
             pending.QpcTimestamp,
             _clock.ToUtc(pending.QpcTimestamp),
@@ -213,7 +226,9 @@ public sealed class WindowMonitor : IDisposable
             IsIconic(pending.Handle),
             pending.EventType,
             pending.ObjectId,
-            pending.ChildId);
+            pending.ChildId,
+            focusedWindowHandle,
+            guiThreadFlags);
     }
 
     private static string ReadWindowTitle(nint hwnd)
@@ -262,6 +277,33 @@ public sealed class WindowMonitor : IDisposable
         int ObjectId,
         int ChildId,
         int Generation);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct GuiThreadInfo
+    {
+        public uint Size;
+        public uint Flags;
+        public nint ActiveWindow;
+        public nint FocusWindow;
+        public nint CaptureWindow;
+        public nint MenuOwnerWindow;
+        public nint MoveSizeWindow;
+        public nint CaretWindow;
+        public NativeRect CaretRect;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetGUIThreadInfo(uint idThread, ref GuiThreadInfo info);
 
     private delegate void WinEventDelegate(
         nint hWinEventHook,
