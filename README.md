@@ -27,7 +27,7 @@ Every session records Windows version/build, DisplayVersion, UBR (when readable)
 
 - WPF monitoring interface.
 - Foreground-window changes through `SetWinEventHook(EVENT_SYSTEM_FOREGROUND)`, plus minimize/restore events through `EVENT_SYSTEM_MINIMIZESTART` and `EVENT_SYSTEM_MINIMIZEEND`, and separate `EVENT_OBJECT_FOCUS` metadata events. Object focus is not treated as proof that the game's input thread has resumed.
-- HWND, PID, TID, process name, window title and minimized state.
+- HWND, PID, TID, process name, window title and minimized state; `GetGUIThreadInfo` focused child HWND and GUI flags are recorded separately from the foreground HWND.
 - QPC timestamp and UTC conversion.
 - Target-process selection from the current foreground window.
 - Diagnostic session state transitions:
