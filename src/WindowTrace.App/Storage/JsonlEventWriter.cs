@@ -136,7 +136,12 @@ public sealed class JsonlEventWriter : IAsyncDisposable
         {
             _lastError ??= new TimeoutException("JSONL writer did not drain within 15 seconds.");
             _cancellation.Cancel();
-            try { await _worker; } catch { }
+            try { await _worker.WaitAsync(TimeSpan.FromSeconds(3)); }
+            catch (TimeoutException)
+            {
+                _lastError ??= new TimeoutException("JSONL writer did not stop after cancellation.");
+            }
+            catch { }
         }
         finally
         {
