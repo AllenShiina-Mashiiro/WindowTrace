@@ -42,6 +42,7 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
     private bool _disposed;
     private int _eventsLost = -1;
     private long _timestampFallbackCount;
+    private long _throttledEventCount;
     private int _targetProcessId;
     private readonly ConcurrentDictionary<uint, uint> _threadProcessIds = new();
     private readonly ConcurrentDictionary<uint, long> _targetThreadReadyQpc = new();
@@ -98,6 +99,7 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
         }
     }
     public long TimestampFallbackCount => Interlocked.Read(ref _timestampFallbackCount);
+    public long ThrottledEventCount => Interlocked.Read(ref _throttledEventCount);
     public bool IsRunning => _session is not null && _processingTask is { IsCompleted: false };
 
     public void Start()
@@ -439,20 +441,7 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
     }
 
     private int GetEtwSamplingIntervalMilliseconds(string providerName, string eventName, uint? processId)
-    {
-        if (providerName.Contains("Dwm-Core", StringComparison.OrdinalIgnoreCase))
-            return 100;
-
-        if (providerName.Contains("DxgKrnl", StringComparison.OrdinalIgnoreCase) && processId == 4u)
-            return 100;
-
-        if (providerName.Equals("NT Kernel Logger", StringComparison.OrdinalIgnoreCase) &&
-            (eventName.Contains("DPC", StringComparison.OrdinalIgnoreCase) ||
-             eventName.Contains("ISR", StringComparison.OrdinalIgnoreCase)))
-            return 5;
-
-        return 0;
-    }
+        => EtwSamplingPolicy.GetIntervalMilliseconds(providerName, eventName, processId, TargetProcessId);
 
     private bool ShouldThrottleEtwEvent(string providerName, string eventName, long qpc, int intervalMs)
     {
@@ -464,7 +453,10 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
         if (_lastPersistedEtwEventQpc.TryGetValue(key, out var previousQpc) &&
             qpc >= previousQpc &&
             qpc - previousQpc < minimumTicks)
+        {
+            Interlocked.Increment(ref _throttledEventCount);
             return true;
+        }
 
         _lastPersistedEtwEventQpc[key] = qpc;
         return false;
@@ -674,4 +666,34 @@ public static class EtwEventFilter
 
     private static bool ContainsAny(string value, params string[] fragments)
         => fragments.Any(fragment => value.Contains(fragment, StringComparison.OrdinalIgnoreCase));
+}
+
+
+public static class EtwSamplingPolicy
+{
+    public static int GetIntervalMilliseconds(
+        string providerName,
+        string eventName,
+        uint? processId,
+        uint? targetProcessId)
+    {
+        if (providerName.Contains("Dwm-Core", StringComparison.OrdinalIgnoreCase))
+            return 100;
+
+        if (providerName.Contains("DxgKrnl", StringComparison.OrdinalIgnoreCase))
+        {
+            if (targetProcessId is uint targetPid && processId == targetPid)
+                return 2;
+
+            if (processId == 4u && eventName.Contains("VSyncDPC", StringComparison.OrdinalIgnoreCase))
+                return 100;
+        }
+
+        if (providerName.Equals("NT Kernel Logger", StringComparison.OrdinalIgnoreCase) &&
+            (eventName.Contains("DPC", StringComparison.OrdinalIgnoreCase) ||
+             eventName.Contains("ISR", StringComparison.OrdinalIgnoreCase)))
+            return 5;
+
+        return 0;
+    }
 }
