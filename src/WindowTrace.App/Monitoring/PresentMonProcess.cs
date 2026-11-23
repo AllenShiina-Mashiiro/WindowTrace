@@ -55,6 +55,7 @@ public sealed class PresentMonProcess : IAsyncDisposable
         startInfo.ArgumentList.Add("--no_console_stats");
         startInfo.ArgumentList.Add("--no_track_input");
         startInfo.ArgumentList.Add("--v2_metrics");
+        startInfo.ArgumentList.Add("--write_display_metadata");
         startInfo.ArgumentList.Add("--session_name");
         startInfo.ArgumentList.Add($"WindowTrace-{Environment.ProcessId}");
         startInfo.ArgumentList.Add("--terminate_on_proc_exit");
