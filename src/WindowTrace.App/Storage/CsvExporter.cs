@@ -36,18 +36,23 @@ public static class CsvExporter
         await using var writer = new StreamWriter(output, new UTF8Encoding(true));
 
         await writer.WriteLineAsync(string.Join(",", Headers));
+        var lineNumber = 0;
         while (await reader.ReadLineAsync(cancellationToken) is { } line)
         {
+            lineNumber++;
             cancellationToken.ThrowIfCancellationRequested();
             if (string.IsNullOrWhiteSpace(line))
                 continue;
 
             DiagnosticEvent? item;
             try { item = JsonSerializer.Deserialize<DiagnosticEvent>(line); }
-            catch (JsonException) { continue; }
+            catch (JsonException ex)
+            {
+                throw new InvalidDataException($"Malformed JSONL record at line {lineNumber}.", ex);
+            }
 
             if (item is null)
-                continue;
+                throw new InvalidDataException($"JSONL record at line {lineNumber} was empty or null.");
 
             var values = new string?[]
             {
