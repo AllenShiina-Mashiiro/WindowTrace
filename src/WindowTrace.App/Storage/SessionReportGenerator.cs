@@ -75,7 +75,7 @@ public static class SessionReportGenerator
                     (latestFocusGained is null || item.QpcTimestamp > latestFocusGained.QpcTimestamp))
                     latestFocusGained = item;
 
-                if (item.Source is not ("WindowTrace" or "PresentMonProcess" or "PresentMonMetrics" or "WinEvent" or "WindowPoll" or "PDH" or "ETW" or "GetSystemTimes+Process.TotalProcessorTime"))
+                if (IsEtwEvent(item))
                 {
                     var key = $"{item.Source} / {item.EventType}";
                     etwCounts[key] = etwCounts.GetValueOrDefault(key) + 1;
@@ -431,7 +431,7 @@ public static class SessionReportGenerator
 
             if (item is null)
                 throw new InvalidDataException($"JSONL record at line {lineNumber} was null.");
-            if (!IsEtwSource(item.Source) ||
+            if (!IsEtwEvent(item) ||
                 item.QpcTimestamp < focusGained.QpcTimestamp ||
                 item.QpcTimestamp > endQpc)
                 continue;
@@ -522,8 +522,9 @@ public static class SessionReportGenerator
             0);
     }
 
-    private static bool IsEtwSource(string source)
-        => source is not ("WindowTrace" or "PresentMonProcess" or "PresentMonMetrics" or "WinEvent" or "WindowPoll" or "PDH" or "ETW" or "GetSystemTimes+Process.TotalProcessorTime");
+    private static bool IsEtwEvent(DiagnosticEvent item)
+        => item.EventType.StartsWith("Etw:", StringComparison.OrdinalIgnoreCase) ||
+           item.EventType is "TargetThreadReady" or "TargetThreadContextSwitch";
 
     private static bool IsFocusEvent(string eventType)
         => eventType is "FocusLost" or "FocusGained" or "FocusLostAgain" or
