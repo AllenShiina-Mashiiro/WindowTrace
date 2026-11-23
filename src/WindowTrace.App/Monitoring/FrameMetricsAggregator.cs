@@ -18,7 +18,7 @@ public sealed class FrameMetricsAggregator
 
     public FrameMetricsAggregator(QpcClock clock) => _clock = clock;
 
-    public DiagnosticEvent? AddFrame(long qpc, IReadOnlyDictionary<string, string> fields)
+    public DiagnosticEvent? AddFrame(long qpc, IReadOnlyDictionary<string, string> fields, bool qpcIsFrameTimestamp)
     {
         var frameTime = TryReadPositive(fields, "MsBetweenPresents");
         var frameTimeSource = "MsBetweenPresents";
@@ -29,7 +29,7 @@ public sealed class FrameMetricsAggregator
             frameTimeSource = "MsBetweenDisplayChange";
         }
 
-        if (frameTime is null && qpc > 0)
+        if (frameTime is null && qpcIsFrameTimestamp && qpc > 0)
         {
             var swapChain = Read(fields, "SwapChainAddress") ?? "default";
             if (_previousQpcBySwapChain.TryGetValue(swapChain, out var previousQpc) && qpc > previousQpc)
