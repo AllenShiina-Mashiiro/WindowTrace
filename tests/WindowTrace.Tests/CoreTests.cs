@@ -48,6 +48,19 @@ public sealed class CoreTests
             provider, eventName, taskName, processId, targetProcessId));
     }
 
+    [Theory]
+    [InlineData("Microsoft-Windows-DxgKrnl", "QueuePacket/Start", 21948u, 21948u, 2)]
+    [InlineData("Microsoft-Windows-DxgKrnl", "VSyncDPC", 4u, 21948u, 100)]
+    [InlineData("Microsoft-Windows-Dwm-Core", "SCHEDULE_PRESENT/Start", 4u, 21948u, 100)]
+    [InlineData("NT Kernel Logger", "DPC/Start", 4u, 21948u, 5)]
+    [InlineData("Microsoft-Windows-DxgKrnl", "QueuePacket/Start", 4u, 21948u, 0)]
+    public void EtwSamplingPolicy_RateLimitsHighVolumeFamiliesWithoutChangingTargetScope(
+        string provider, string eventName, uint processId, uint targetProcessId, int expectedInterval)
+    {
+        Assert.Equal(expectedInterval, EtwSamplingPolicy.GetIntervalMilliseconds(
+            provider, eventName, processId, targetProcessId));
+    }
+
     [Fact]
     public void EtwTimestampNormalizer_DistinguishesEventQpcFromReceiptFallback()
     {
