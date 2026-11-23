@@ -60,6 +60,12 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
             RegisterThreadMapping(threadId, processId, "WinEventWindowThread", _clock.GetTimestamp());
     }
 
+    public void RegisterTargetProcessThread(uint processId, uint threadId)
+    {
+        if (processId == TargetProcessId)
+            RegisterThreadMapping(threadId, processId, "ProcessThreadEnumeration", _clock.GetTimestamp());
+    }
+
     public event Action<DiagnosticEvent>? EventReceived;
     public event Action<string>? CollectorWarning;
 
