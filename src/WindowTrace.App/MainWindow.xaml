@@ -71,7 +71,7 @@
                               IsChecked="False" Checked="InputMarkerCheckBox_Checked"
                               Unchecked="InputMarkerCheckBox_Unchecked" Margin="0,0,12,4" />
                 </WrapPanel>
-                <TextBlock Text="PresentMon 2.x is optional and runs only for the selected PID. Input marker is off by default; when enabled, the registered chord is consumed as a timestamp marker only. No other keys or key contents are monitored."
+                <TextBlock Text="PresentMon 2.x is optional and runs only for the selected PID. For a manual response test, enable the marker, press Ctrl+Alt+F12 immediately before the test key, then press it again as soon as the game visibly responds. The report shows the marker-to-response interval; it includes human timing and is not raw keyboard latency. The chord is consumed, and no other keys or key contents are monitored."
                            Foreground="#64748B" FontSize="11" TextWrapping="Wrap" />
             </StackPanel>
         </Border>
