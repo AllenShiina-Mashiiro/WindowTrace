@@ -436,7 +436,7 @@ public partial class MainWindow : Window
                 null,
                 null,
                 null,
-                $"Executable={Path.GetFileName(path)};Version={presentMonVersion};QpcTimeRequested=True;InputTracking=False;V2Metrics=True"));
+                $"Executable={Path.GetFileName(path)};Version={presentMonVersion};QpcTimeRequested=True;InputTracking=False;V2Metrics=True;DisplayMetadata=True"));
         }
         catch (Exception ex)
         {
