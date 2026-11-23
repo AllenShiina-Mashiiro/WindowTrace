@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Threading;
 using System.Windows.Interop;
+using System.Windows.Controls;
 using Microsoft.Win32;
 using WindowTrace.Core;
 using WindowTrace.Monitoring;
@@ -22,8 +23,6 @@ public partial class MainWindow : Window
     private readonly WindowMonitor _windowMonitor;
     private readonly DiagnosticSessionManager _sessions;
     private readonly DispatcherTimer _sessionTimer;
-    private readonly DispatcherTimer _targetPickTimer;
-    private int _targetPickRemaining;
 
     private EtwRealtimeCollector? _etwCollector;
     private CpuSampler? _cpuSampler;
@@ -61,9 +60,6 @@ public partial class MainWindow : Window
             Interval = TimeSpan.FromMilliseconds(100)
         };
         _sessionTimer.Tick += SessionTimer_Tick;
-
-        _targetPickTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        _targetPickTimer.Tick += TargetPickTimer_Tick;
 
         EnvironmentText.Text =
             $"Environment: {RuntimeInformation.OSDescription} | " +
@@ -138,6 +134,14 @@ public partial class MainWindow : Window
     {
         if (_isMonitoring)
             return;
+
+        if (_sessions.TargetProcessId is null)
+        {
+            MessageBox.Show(this,
+                "First select the game window using '1. Select game window'. Then click '2. Start monitoring'.",
+                "Select a target first", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
 
         try
         {
@@ -254,79 +258,178 @@ public partial class MainWindow : Window
         await StopMonitoringAsync();
     }
 
-    private void SetTargetButton_Click(object sender, RoutedEventArgs e)
+    private async void SetTargetButton_Click(object sender, RoutedEventArgs e)
     {
         if (_sessions.IsSessionActive)
         {
-            MessageBox.Show(this, "A diagnostic session is active. Stop monitoring before changing the target.",
+            MessageBox.Show(this, "A diagnostic session is active. Wait for it to finish or stop monitoring before changing the target.",
                 "WindowTrace", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
-        _targetPickRemaining = 3;
-        StatusText.Text = "Switch to the game now";
-        FooterText.Text = "Target picker armed. Switch to the game within 3 seconds; WindowTrace will capture the foreground process.";
-        _targetPickTimer.Stop();
-        _targetPickTimer.Start();
-    }
-
-    private async void TargetPickTimer_Tick(object? sender, EventArgs e)
-    {
-        _targetPickRemaining--;
-        if (_targetPickRemaining > 0)
-        {
-            StatusText.Text = $"Capturing foreground process in {_targetPickRemaining}...";
+        var snapshot = ShowTargetWindowPicker();
+        if (snapshot is null)
             return;
-        }
-
-        _targetPickTimer.Stop();
-        var snapshot = _windowMonitor.CaptureForeground();
-        if (snapshot is null || snapshot.ProcessId == Environment.ProcessId)
-        {
-            StatusText.Text = "Target selection not completed";
-            FooterText.Text = "WindowTrace is still foreground. Click the target picker and switch to the game during the 3-second countdown.";
-            return;
-        }
 
         try
         {
-            if (_sessions.IsSessionActive)
-                throw new InvalidOperationException("A diagnostic session is active. Stop monitoring before changing the target.");
-
-            await StopTargetCollectorsAsync();
-            _sessions.SetTarget(snapshot.ProcessId, snapshot.ProcessName, snapshot.ProcessId);
-            TargetText.Text = $"Target: {snapshot.ProcessName} (PID {snapshot.ProcessId}) | {snapshot.WindowTitle}";
-            StatusText.Text = $"Target selected: {snapshot.ProcessName}";
-
-            var selectedQpc = _clock.GetTimestamp();
-            _sessions.PublishTelemetry(new DiagnosticEvent(
-                Guid.NewGuid(), "TargetSelected", "WindowTrace",
-                selectedQpc, _clock.Frequency, _clock.ToUtc(selectedQpc),
-                _clock.ElapsedMilliseconds(_clock.AnchorTimestamp, selectedQpc),
-                snapshot.ProcessId, snapshot.ThreadId, unchecked((ulong)snapshot.Handle),
-                snapshot.ProcessName, snapshot.WindowTitle,
-                "Target was selected using the delayed foreground picker."));
-
-            if (_isMonitoring)
-            {
-                EnsureEtwCollectorStarted();
-                RegisterTargetProcessThreads(snapshot.ProcessId);
-                RegisterTargetWindowThread(snapshot);
-                await StartTargetCollectorsAsync(snapshot.ProcessId);
-
-                var currentForeground = _windowMonitor.CaptureForeground();
-                if (currentForeground is not null &&
-                    currentForeground.ProcessId != snapshot.ProcessId &&
-                    !_sessions.IsSessionActive)
-                    PublishForegroundSnapshot(currentForeground);
-
-                FooterText.Text = "Target selected. CPU/GPU/PresentMon and ETW collectors are starting; wait at least 3 seconds before reproducing the focus switch.";
-            }
+            await SetTargetAsync(snapshot);
         }
         catch (Exception ex)
         {
             MessageBox.Show(this, ex.Message, "WindowTrace", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
+    }
+
+    private WindowSnapshot? ShowTargetWindowPicker()
+    {
+        var picker = new Window
+        {
+            Title = "Select game window",
+            Width = 720,
+            Height = 480,
+            MinWidth = 560,
+            MinHeight = 360,
+            Owner = this,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            ResizeMode = ResizeMode.CanResize
+        };
+
+        var root = new DockPanel { Margin = new Thickness(16) };
+        var instructions = new TextBlock
+        {
+            Text = "Choose the game's visible window. No countdown is required. If the game is not listed, launch it and refresh.",
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 12)
+        };
+        DockPanel.SetDock(instructions, Dock.Top);
+        root.Children.Add(instructions);
+
+        var buttons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Margin = new Thickness(0, 12, 0, 0)
+        };
+        DockPanel.SetDock(buttons, Dock.Bottom);
+
+        var list = new ListBox { MinHeight = 240, DisplayMemberPath = "Content" };
+        root.Children.Add(list);
+
+        var selectedSnapshot = (WindowSnapshot?)null;
+        void RefreshWindows()
+        {
+            list.Items.Clear();
+            foreach (var candidate in GetVisibleWindowCandidates())
+            {
+                list.Items.Add(new ListBoxItem
+                {
+                    Content = $"{candidate.ProcessName}  |  PID {candidate.ProcessId}  |  {candidate.WindowTitle}",
+                    Tag = candidate,
+                    Padding = new Thickness(6)
+                });
+            }
+
+            if (list.Items.Count > 0)
+                list.SelectedIndex = 0;
+        }
+
+        var refreshButton = new Button { Content = "Refresh list", Padding = new Thickness(12, 6, 12, 6), Margin = new Thickness(0, 0, 8, 0) };
+        refreshButton.Click += (_, _) => RefreshWindows();
+
+        var cancelButton = new Button { Content = "Cancel", Padding = new Thickness(12, 6, 12, 6), Margin = new Thickness(0, 0, 8, 0), IsCancel = true };
+        var selectButton = new Button { Content = "Select window", Padding = new Thickness(12, 6, 12, 6), IsDefault = true };
+        selectButton.Click += (_, _) =>
+        {
+            if (list.SelectedItem is not ListBoxItem { Tag: WindowSnapshot choice })
+            {
+                MessageBox.Show(picker, "Select a game window first.", "No window selected",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            selectedSnapshot = choice;
+            picker.DialogResult = true;
+        };
+
+        buttons.Children.Add(refreshButton);
+        buttons.Children.Add(cancelButton);
+        buttons.Children.Add(selectButton);
+        root.Children.Add(buttons);
+        picker.Content = root;
+        RefreshWindows();
+
+        return picker.ShowDialog() == true ? selectedSnapshot : null;
+    }
+
+    private IReadOnlyList<WindowSnapshot> GetVisibleWindowCandidates()
+    {
+        var candidates = new List<WindowSnapshot>();
+        foreach (var process in Process.GetProcesses())
+        {
+            try
+            {
+                if (process.Id == Environment.ProcessId)
+                    continue;
+
+                process.Refresh();
+                var handle = process.MainWindowHandle;
+                if (handle == IntPtr.Zero || string.IsNullOrWhiteSpace(process.MainWindowTitle))
+                    continue;
+
+                var snapshot = _windowMonitor.CaptureWindow(handle);
+                if (snapshot is null || snapshot.ProcessId != process.Id)
+                    continue;
+
+                candidates.Add(snapshot);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or ArgumentException)
+            {
+                // A process can exit or deny window metadata access while the list is being refreshed.
+            }
+            finally
+            {
+                process.Dispose();
+            }
+        }
+
+        return candidates
+            .OrderBy(item => item.ProcessName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(item => item.WindowTitle, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private async Task SetTargetAsync(WindowSnapshot snapshot)
+    {
+        if (_sessions.IsSessionActive)
+            throw new InvalidOperationException("A diagnostic session is active. Wait for it to finish before changing the target.");
+
+        var currentForeground = _windowMonitor.CaptureForeground();
+        await StopTargetCollectorsAsync();
+        _sessions.SetTarget(snapshot.ProcessId, snapshot.ProcessName, currentForeground?.ProcessId);
+        TargetText.Text = $"Selected: {snapshot.ProcessName} (PID {snapshot.ProcessId}) | {snapshot.WindowTitle}";
+        StatusText.Text = $"Target selected: {snapshot.ProcessName}";
+
+        var selectedQpc = _clock.GetTimestamp();
+        _sessions.PublishTelemetry(new DiagnosticEvent(
+            Guid.NewGuid(), "TargetSelected", "WindowTrace",
+            selectedQpc, _clock.Frequency, _clock.ToUtc(selectedQpc),
+            _clock.ElapsedMilliseconds(_clock.AnchorTimestamp, selectedQpc),
+            snapshot.ProcessId, snapshot.ThreadId, unchecked((ulong)snapshot.Handle),
+            snapshot.ProcessName, snapshot.WindowTitle,
+            "Target selected explicitly from the visible top-level window list."));
+
+        if (_isMonitoring)
+        {
+            EnsureEtwCollectorStarted();
+            RegisterTargetProcessThreads(snapshot.ProcessId);
+            RegisterTargetWindowThread(snapshot);
+            await StartTargetCollectorsAsync(snapshot.ProcessId);
+        }
+
+        FooterText.Text = _isMonitoring
+            ? "Target ready. Switch to the game and wait at least 3 seconds, Alt+Tab away, then return. Capture starts automatically when the game loses focus."
+            : "Target selected. Next click '2. Start monitoring'.";
     }
 
     private async void ClearTargetButton_Click(object sender, RoutedEventArgs e)
@@ -336,7 +439,6 @@ public partial class MainWindow : Window
             if (_sessions.IsSessionActive)
                 throw new InvalidOperationException("A diagnostic session is active. Stop monitoring before clearing the target.");
 
-            _targetPickTimer.Stop();
             await StopTargetCollectorsAsync();
             await StopEtwCollectorAsync();
             _sessions.ClearTarget();
@@ -934,7 +1036,6 @@ public partial class MainWindow : Window
         e.Cancel = true;
         _isClosing = true;
 
-        _targetPickTimer.Stop();
         try
         {
             await StopMonitoringAsync();
