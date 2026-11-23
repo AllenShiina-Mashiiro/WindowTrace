@@ -5,8 +5,8 @@ using WindowTrace.Core;
 namespace WindowTrace.Storage;
 
 /// <summary>
-/// Bounded asynchronous JSONL writer. If the bounded queue fills, the
-/// dropped-record count is exposed instead of silently pretending the log is complete.
+/// Bounded asynchronous JSONL writer. Records are flushed in batches to reduce
+/// per-event disk overhead. Queue overflow is counted and exposed to the report.
 /// </summary>
 public sealed class JsonlEventWriter : IAsyncDisposable
 {
@@ -16,16 +16,17 @@ public sealed class JsonlEventWriter : IAsyncDisposable
     };
 
     private readonly Channel<DiagnosticEvent> _channel;
-    private readonly CancellationTokenSource _cancellation = new();
     private readonly Task _worker;
     private readonly string _path;
     private long _droppedRecords;
     private Exception? _lastError;
 
-    public JsonlEventWriter(string path, int queueCapacity = 4096)
+    public JsonlEventWriter(string path, int queueCapacity = 32768)
     {
         _path = path;
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var directory = Path.GetDirectoryName(path);
+        if (!string.IsNullOrWhiteSpace(directory))
+            Directory.CreateDirectory(directory);
 
         _channel = Channel.CreateBounded<DiagnosticEvent>(
             new BoundedChannelOptions(queueCapacity)
@@ -44,11 +45,13 @@ public sealed class JsonlEventWriter : IAsyncDisposable
 
     public bool TryWrite(DiagnosticEvent item)
     {
-        if (_channel.Writer.TryWrite(item))
-            return true;
+        if (_lastError is not null || !_channel.Writer.TryWrite(item))
+        {
+            Interlocked.Increment(ref _droppedRecords);
+            return false;
+        }
 
-        Interlocked.Increment(ref _droppedRecords);
-        return false;
+        return true;
     }
 
     private async Task WriteLoopAsync()
@@ -60,20 +63,25 @@ public sealed class JsonlEventWriter : IAsyncDisposable
                 FileMode.Create,
                 FileAccess.Write,
                 FileShare.Read,
-                64 * 1024,
+                128 * 1024,
                 FileOptions.Asynchronous | FileOptions.SequentialScan);
-
             await using var writer = new StreamWriter(stream);
 
-            await foreach (var item in _channel.Reader.ReadAllAsync(_cancellation.Token))
+            var batch = new List<DiagnosticEvent>(256);
+            while (await _channel.Reader.WaitToReadAsync().ConfigureAwait(false))
             {
-                var json = JsonSerializer.Serialize(item, JsonOptions);
-                await writer.WriteLineAsync(json);
-                await writer.FlushAsync();
+                batch.Clear();
+                while (batch.Count < 256 && _channel.Reader.TryRead(out var item))
+                    batch.Add(item);
+
+                foreach (var item in batch)
+                    await writer.WriteLineAsync(JsonSerializer.Serialize(item, JsonOptions)).ConfigureAwait(false);
+
+                await writer.FlushAsync().ConfigureAwait(false);
             }
-        }
-        catch (OperationCanceledException) when (_cancellation.IsCancellationRequested)
-        {
+
+            if (batch.Count > 0)
+                await writer.FlushAsync().ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -84,17 +92,13 @@ public sealed class JsonlEventWriter : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         _channel.Writer.TryComplete();
-
         try
         {
-            await _worker.WaitAsync(TimeSpan.FromSeconds(5));
+            await _worker.WaitAsync(TimeSpan.FromSeconds(10));
         }
         catch (TimeoutException)
         {
-            _cancellation.Cancel();
-            try { await _worker; } catch { }
+            _lastError ??= new TimeoutException("JSONL writer did not drain within 10 seconds.");
         }
-
-        _cancellation.Dispose();
     }
 }
