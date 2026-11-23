@@ -19,7 +19,7 @@ It is designed to collect timestamped observations across window focus, CPU sche
 
 The current development computer runs Windows 11 **26H2**. The affected computer runs Windows 11 **25H2**. The development computer previously ran 25H2 without reproducing the issue.
 
-Every session records Windows version/build, DisplayVersion, UBR (when readable), edition, .NET runtime, process architecture and QPC frequency. ETW providers and GPU counters are checked on the machine at runtime. A successful run on the development computer does not establish that the affected computer has the same provider, driver, GPU or system configuration.
+Every session records Windows version/build, DisplayVersion, UBR (when readable), edition, .NET runtime, process architecture, QPC frequency, CPU model, logical processor count, installed memory, BIOS/board identifiers and display-adapter driver metadata when available. ETW providers and GPU counters are checked on the machine at runtime. A successful run on the development computer does not establish that the affected computer has the same provider, driver, GPU or system configuration.
 
 ## Current implementation
 
@@ -116,7 +116,7 @@ PresentMon is an optional external dependency and is not bundled in this reposit
 - No game injection or process memory reading.
 - No global keyboard logger.
 - No key-character or key-content recording. Win32k ETW event payloads are deliberately omitted; only event timing and metadata are retained. Process-start payloads are also omitted to avoid persisting command lines.
-- No automatic BIOS, registry, driver or Windows configuration changes. Registry access is read-only and limited to OS version metadata.
+- No automatic BIOS, registry, driver or Windows configuration changes. Registry access is read-only and limited to OS, CPU, BIOS and display-adapter inventory metadata.
 - No automatic elevation.
 - Monitoring continues when optional collectors fail.
 - CPU percentages, GPU engine counters, ETW payloads and PresentMon metrics represent different measurements and must not be treated as interchangeable.
