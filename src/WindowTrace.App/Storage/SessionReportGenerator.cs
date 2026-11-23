@@ -96,20 +96,29 @@ public static class SessionReportGenerator
 
         report.AppendLine("## Session and environment");
         report.AppendLine();
-        report.AppendLine($"- Session ID: {metadata?.SessionId.ToString() ?? "Unavailable"}");
-        report.AppendLine($"- Target: {metadata?.TargetProcessName ?? quality?.TargetProcessName ?? "Unavailable"} (PID {metadata?.TargetProcessId?.ToString(CultureInfo.InvariantCulture) ?? quality?.TargetProcessId?.ToString(CultureInfo.InvariantCulture) ?? "Unavailable"})");
-        report.AppendLine($"- Started (UTC): {metadata?.StartedUtc.ToString("O", CultureInfo.InvariantCulture) ?? "Unavailable"}");
-        report.AppendLine($"- OS: {metadata?.WindowsDisplayVersion ?? "Unknown"} / Build {metadata?.WindowsBuildNumber ?? metadata?.OsBuild.ToString(CultureInfo.InvariantCulture) ?? "Unavailable"}.{metadata?.WindowsUpdateRevision?.ToString(CultureInfo.InvariantCulture) ?? "?"}");
-        report.AppendLine($"- CPU: {metadata?.CpuModel ?? "Unavailable"}; logical processors: {metadata?.LogicalProcessorCount.ToString(CultureInfo.InvariantCulture) ?? "Unavailable"}");
+        var sessionIdText = metadata is null ? "Unavailable" : metadata.SessionId.ToString();
+        var targetName = metadata?.TargetProcessName ?? quality?.TargetProcessName ?? "Unavailable";
+        var targetPid = metadata?.TargetProcessId?.ToString(CultureInfo.InvariantCulture) ?? quality?.TargetProcessId?.ToString(CultureInfo.InvariantCulture) ?? "Unavailable";
+        var startedUtc = metadata is null ? "Unavailable" : metadata.StartedUtc.ToString("O", CultureInfo.InvariantCulture);
+        var buildNumber = metadata is null ? "Unavailable" : metadata.WindowsBuildNumber ?? metadata.OsBuild.ToString(CultureInfo.InvariantCulture);
+        var revision = metadata?.WindowsUpdateRevision?.ToString(CultureInfo.InvariantCulture) ?? "?";
+        var logicalProcessors = metadata is null ? "Unavailable" : metadata.LogicalProcessorCount.ToString(CultureInfo.InvariantCulture);
+        var qpcFrequency = metadata is null ? "Unavailable" : metadata.QpcFrequency.ToString("N0", CultureInfo.InvariantCulture);
+
+        report.AppendLine($"- Session ID: {sessionIdText}");
+        report.AppendLine($"- Target: {targetName} (PID {targetPid})");
+        report.AppendLine($"- Started (UTC): {startedUtc}");
+        report.AppendLine($"- OS: {metadata?.WindowsDisplayVersion ?? "Unknown"} / Build {buildNumber}.{revision}");
+        report.AppendLine($"- CPU: {metadata?.CpuModel ?? "Unavailable"}; logical processors: {logicalProcessors}");
         report.AppendLine($"- Installed memory: {FormatBytes(metadata?.InstalledPhysicalMemoryBytes)}");
         report.AppendLine($"- BIOS / system: {metadata?.BiosVersion ?? "Unavailable"} / {metadata?.SystemManufacturer ?? "Unavailable"} {metadata?.SystemProductName ?? string.Empty}");
-        report.AppendLine($"- QPC frequency: {metadata?.QpcFrequency.ToString("N0", CultureInfo.InvariantCulture) ?? "Unavailable"}");
+        report.AppendLine($"- QPC frequency: {qpcFrequency}");
         report.AppendLine();
 
         report.AppendLine("## Capture quality");
         report.AppendLine();
         report.AppendLine($"- Total events: {totalEvents}");
-        var timeSpan = firstQpc is long first && lastQpc is long last && metadata?.QpcFrequency > 0
+        var timeSpan = firstQpc is long first && lastQpc is long last && metadata is not null && metadata.QpcFrequency > 0
             ? ((double)(last - first) * 1000d / metadata.QpcFrequency).ToString("F3", CultureInfo.InvariantCulture) + " ms"
             : "Unavailable";
         report.AppendLine($"- Event time span: {timeSpan}");
