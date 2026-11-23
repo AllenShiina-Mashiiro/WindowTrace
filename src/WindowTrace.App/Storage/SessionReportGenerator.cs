@@ -151,6 +151,7 @@ public static class SessionReportGenerator
         AppendEventTable(report, "Rendering summaries", renderingEvents);
         AppendEventTable(report, "CPU samples", cpuEvents);
         AppendEventTable(report, "GPU samples", gpuEvents);
+        AppendLatestPostFocusWindow(report, focusEvents, renderingEvents, cpuEvents, gpuEvents, markerEvents);
 
         report.AppendLine("## ETW event volume");
         report.AppendLine();
@@ -185,6 +186,55 @@ public static class SessionReportGenerator
         var reportPath = Path.ChangeExtension(jsonlPath, ".report.md");
         await File.WriteAllTextAsync(reportPath, report.ToString(), new UTF8Encoding(false), cancellationToken);
         return reportPath;
+    }
+
+    private static void AppendLatestPostFocusWindow(
+        StringBuilder report,
+        IReadOnlyList<DiagnosticEvent> focusEvents,
+        IReadOnlyList<DiagnosticEvent> renderingEvents,
+        IReadOnlyList<DiagnosticEvent> cpuEvents,
+        IReadOnlyList<DiagnosticEvent> gpuEvents,
+        IReadOnlyList<DiagnosticEvent> markerEvents)
+    {
+        report.AppendLine("## Latest 1.5-second window after focus regained");
+        report.AppendLine();
+
+        var focusGained = focusEvents
+            .Where(item => item.EventType == "FocusGained")
+            .OrderBy(item => item.QpcTimestamp)
+            .LastOrDefault();
+
+        if (focusGained is null)
+        {
+            report.AppendLine("No FocusGained marker was recorded; this window cannot be aligned.");
+            report.AppendLine();
+            return;
+        }
+
+        var start = focusGained.RelativeMilliseconds;
+        var end = start + 1500d;
+        report.AppendLine($"Reference interval: {start.ToString("F3", CultureInfo.InvariantCulture)} to {end.ToString("F3", CultureInfo.InvariantCulture)} ms relative to session start.");
+        report.AppendLine();
+
+        var windowEvents = renderingEvents.Concat(cpuEvents).Concat(gpuEvents).Concat(markerEvents)
+            .Where(item => item.RelativeMilliseconds >= start && item.RelativeMilliseconds <= end)
+            .OrderBy(item => item.QpcTimestamp)
+            .ToArray();
+
+        if (windowEvents.Length == 0)
+        {
+            report.AppendLine("No rendering, CPU, GPU or marker events were available in this interval.");
+            report.AppendLine();
+            return;
+        }
+
+        report.AppendLine("| Relative time (ms) | Event | Source | Details |");
+        report.AppendLine("|---:|---|---|---|");
+        foreach (var item in windowEvents)
+        {
+            report.AppendLine($"| {item.RelativeMilliseconds.ToString("F3", CultureInfo.InvariantCulture)} | {EscapeMarkdown(item.EventType)} | {EscapeMarkdown(item.Source)} | {EscapeMarkdown(Truncate(item.Details ?? "—", 300))} |");
+        }
+        report.AppendLine();
     }
 
     private static bool IsFocusEvent(string eventType)
