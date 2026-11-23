@@ -226,50 +226,100 @@ public sealed class CoreTests
     }
 
     [Fact]
-    public async Task SessionReportGenerator_CountsFullPostFocusEtwWindowIndependentOfDetailLimit()
+    public async Task SessionReportGenerator_CountsOriginalWin32kSampleIndependentOfDetailLimit()
     {
         var directory = Path.Combine(Path.GetTempPath(), "WindowTrace.Tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
-        var jsonlPath = Path.Combine(directory, "etw-window.jsonl");
-        var clock = new QpcClock();
+        var jsonlPath = Path.Combine(directory, "original-win32k-window.jsonl");
         var sessionId = Guid.NewGuid();
-        var focusQpc = clock.GetTimestamp();
+        const long focusQpc = 53626866106;
+        const long qpcFrequency = 10_000_000;
+        const double focusRelativeMs = 12209.8804;
+        var focusUtc = DateTimeOffset.UnixEpoch;
+
+        // Exact QPC offsets and event-family sequence extracted from the 97 Win32k
+        // records in the user's original test.zip capture (last FocusGained + 1.5 s).
+        var offsets = new long[]
+        {
+            4192, 4212, 4226, 10275, 10287, 10301, 10322, 10330, 10341, 169122,
+            169230, 169336, 335506, 335550, 335791, 335823, 335867, 337517, 337584,
+            337667, 337686, 337715, 337761, 346844, 349362, 349381, 351497, 352372,
+            352411, 368491, 369184, 369293, 369323, 370775, 372268, 375279, 375294,
+            375307, 382877, 391815, 391846, 393930, 397420, 399258, 399318, 404789,
+            404805, 404817, 406418, 408252, 408339, 480096, 482876, 484388, 484417,
+            638080, 638759, 638839, 638853, 3452974, 3453124, 3453139, 3453156,
+            10241165, 10241947, 10242554, 10242955, 10243322, 10243359, 10243417,
+            10243594, 10243617, 10243949, 10243978, 10416547, 10416639, 10416978,
+            10417082, 10417863, 10417899, 10419868, 12079214, 12082705, 12083347,
+            12084499, 12084535, 12085892, 12086208, 12229878, 12229972, 12230308,
+            12230459, 12230507, 12230582, 12230945, 14720805, 14720996
+        };
+        var eventTypeIds = new int[]
+        {
+            2, 2, 2, 3, 3, 3, 5, 3, 1, 0, 4, 1, 3, 3, 2, 2, 2, 2, 2, 2,
+            2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 0, 2, 5, 3, 5, 2, 2, 2, 1, 0,
+            4, 2, 1, 0, 5, 2, 2, 2, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0,
+            3, 4, 1, 0, 2, 1, 3, 0, 4, 1, 0, 5, 3, 1, 0, 4, 2, 1, 0, 5,
+            1, 0, 2, 1, 0, 5, 3, 1, 0, 4, 2, 1, 0, 5, 1, 0, 1
+        };
+        var eventTypes = new[]
+        {
+            "Etw:AppMessagePump/停止",
+            "Etw:AppMessagePump/开始",
+            "Etw:QueueEventMessage",
+            "Etw:QueuePostMessage",
+            "Etw:RetrievePostMessage",
+            "Etw:RetrieveQueueEventMessage"
+        };
+
+        Assert.Equal(97, offsets.Length);
+        Assert.Equal(offsets.Length, eventTypeIds.Length);
 
         try
         {
             var events = new List<DiagnosticEvent>
             {
-                new(Guid.NewGuid(), "FocusGained", "WindowTrace", focusQpc, clock.Frequency,
-                    clock.ToUtc(focusQpc), 0, 21948, null, null, "TestGame", null,
-                    "Target regained foreground.", sessionId)
+                new(Guid.NewGuid(), "FocusGained", "DiagnosticSessionManager",
+                    focusQpc, qpcFrequency, focusUtc, focusRelativeMs,
+                    21948, null, null, "TestGame", null,
+                    "Target process regained foreground.", sessionId)
             };
 
-            for (var i = 0; i < 97; i++)
+            for (var i = 0; i < offsets.Length; i++)
             {
-                var qpc = focusQpc + (long)(clock.Frequency * (0.001d + i * 0.01d));
+                var offset = offsets[i];
                 events.Add(new DiagnosticEvent(
-                    Guid.NewGuid(), $"Etw:Win32kEvent{i}", "Microsoft-Windows-Win32k",
-                    qpc, clock.Frequency, clock.ToUtc(qpc), i * 10,
-                    21948, 100u + (uint)i, null, "TestGame", null,
-                    "TimestampQuality=ETWQPC", sessionId));
+                    Guid.NewGuid(),
+                    eventTypes[eventTypeIds[i]],
+                    "Microsoft-Windows-Win32k",
+                    focusQpc + offset,
+                    qpcFrequency,
+                    focusUtc.AddTicks(offset),
+                    focusRelativeMs + offset / 10_000d,
+                    21948,
+                    6672,
+                    null,
+                    "TestGame",
+                    null,
+                    "TimestampQuality=ETWQPC;PayloadOmittedByPrivacyPolicy",
+                    sessionId));
             }
 
-            // An event outside the requested 1.5-second window must not affect its count.
-            var outsideQpc = focusQpc + (long)(clock.Frequency * 1.6d);
+            // This record is outside the 1.5-second window and must not be counted.
+            var outsideOffset = 16_000_000L;
             events.Add(new DiagnosticEvent(
                 Guid.NewGuid(), "Etw:OutsideWindow", "Microsoft-Windows-Win32k",
-                outsideQpc, clock.Frequency, clock.ToUtc(outsideQpc), 1600,
-                21948, 999u, null, "TestGame", null, "Outside interval", sessionId));
+                focusQpc + outsideOffset, qpcFrequency, focusUtc.AddTicks(outsideOffset),
+                focusRelativeMs + outsideOffset / 10_000d,
+                21948, 6672, null, "TestGame", null, "Outside interval", sessionId));
 
-            // Deliberately reverse file order: report counts must follow QPC window
-            // membership, not whether the FocusGained line appeared before an ETW row.
+            // Reverse JSONL order so FocusGained appears after the ETW records.
             await File.WriteAllLinesAsync(jsonlPath,
                 events.AsEnumerable().Reverse().Select(item => System.Text.Json.JsonSerializer.Serialize(item)));
 
             var report30Path = await SessionReportGenerator.WriteAsync(
                 jsonlPath, maximumPostFocusEtwRows: 30);
             var report30 = await File.ReadAllTextAsync(report30Path);
-            Assert.Contains("ETW events in interval (all providers): 97", report30);
             Assert.Contains("Win32k ETW events in interval: 97", report30);
             Assert.Contains("Win32k ETW events for target PID 21948: 97; other/unknown PID: 0", report30);
             Assert.Contains("ETW event detail limit reached: 67 additional events", report30);
@@ -277,8 +327,8 @@ public sealed class CoreTests
             var report300Path = await SessionReportGenerator.WriteAsync(
                 jsonlPath, maximumPostFocusEtwRows: 300);
             var report300 = await File.ReadAllTextAsync(report300Path);
-            Assert.Contains("ETW events in interval (all providers): 97", report300);
             Assert.Contains("Win32k ETW events in interval: 97", report300);
+            Assert.Contains("Win32k ETW events for target PID 21948: 97; other/unknown PID: 0", report300);
             Assert.DoesNotContain("ETW event detail limit reached:", report300);
         }
         finally
