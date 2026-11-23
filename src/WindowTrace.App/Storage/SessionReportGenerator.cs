@@ -13,6 +13,7 @@ namespace WindowTrace.Storage;
 public static class SessionReportGenerator
 {
     private const int MaximumDetailRows = 20;
+    private const int MaximumPostFocusEtwRows = 300;
 
     public static async Task<string> WriteAsync(string jsonlPath, CancellationToken cancellationToken = default)
     {
@@ -24,6 +25,10 @@ public static class SessionReportGenerator
         var cpuEvents = new List<DiagnosticEvent>();
         var gpuEvents = new List<DiagnosticEvent>();
         var markerEvents = new List<DiagnosticEvent>();
+        var postFocusEtwEvents = new List<DiagnosticEvent>();
+        var postFocusEtwTruncated = 0;
+        long? latestFocusGainedQpc = null;
+        long latestFocusGainedEndQpc = 0;
         var etwCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var sourceCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         long? firstQpc = null;
@@ -60,6 +65,24 @@ public static class SessionReportGenerator
                 AddRecent(cpuEvents, item, item.EventType == "CpuSample");
                 AddRecent(gpuEvents, item, item.EventType == "GpuPdhSample");
                 AddRecent(markerEvents, item, item.EventType is "InputTestMarker" or "TargetSelected" or "PresentMonCapability" or "EtwProviderCapability");
+
+                if (item.EventType == "FocusGained")
+                {
+                    latestFocusGainedQpc = item.QpcTimestamp;
+                    latestFocusGainedEndQpc = item.QpcTimestamp + (long)(item.QpcFrequency * 1.5d);
+                    postFocusEtwEvents.Clear();
+                    postFocusEtwTruncated = 0;
+                }
+                else if (latestFocusGainedQpc is long focusQpc &&
+                    item.QpcTimestamp >= focusQpc &&
+                    item.QpcTimestamp <= latestFocusGainedEndQpc &&
+                    IsEtwSource(item.Source))
+                {
+                    if (postFocusEtwEvents.Count < MaximumPostFocusEtwRows)
+                        postFocusEtwEvents.Add(item);
+                    else
+                        postFocusEtwTruncated++;
+                }
 
                 if (item.Source is not ("WindowTrace" or "PresentMonProcess" or "PresentMonMetrics" or "WinEvent" or "WindowPoll" or "PDH" or "ETW" or "GetSystemTimes+Process.TotalProcessorTime"))
                 {
@@ -151,7 +174,7 @@ public static class SessionReportGenerator
         AppendEventTable(report, "Rendering summaries", renderingEvents);
         AppendEventTable(report, "CPU samples", cpuEvents);
         AppendEventTable(report, "GPU samples", gpuEvents);
-        AppendLatestPostFocusWindow(report, focusEvents, renderingEvents, cpuEvents, gpuEvents, markerEvents);
+        AppendLatestPostFocusWindow(report, focusEvents, renderingEvents, cpuEvents, gpuEvents, markerEvents, postFocusEtwEvents, postFocusEtwTruncated);
 
         report.AppendLine("## ETW event volume");
         report.AppendLine();
@@ -194,7 +217,9 @@ public static class SessionReportGenerator
         IReadOnlyList<DiagnosticEvent> renderingEvents,
         IReadOnlyList<DiagnosticEvent> cpuEvents,
         IReadOnlyList<DiagnosticEvent> gpuEvents,
-        IReadOnlyList<DiagnosticEvent> markerEvents)
+        IReadOnlyList<DiagnosticEvent> markerEvents,
+        IReadOnlyList<DiagnosticEvent> etwEvents,
+        int etwEventsTruncated)
     {
         report.AppendLine("## Latest 1.5-second window after focus regained");
         report.AppendLine();
@@ -216,7 +241,7 @@ public static class SessionReportGenerator
         report.AppendLine($"Reference interval: {start.ToString("F3", CultureInfo.InvariantCulture)} to {end.ToString("F3", CultureInfo.InvariantCulture)} ms relative to session start.");
         report.AppendLine();
 
-        var windowEvents = renderingEvents.Concat(cpuEvents).Concat(gpuEvents).Concat(markerEvents)
+        var windowEvents = renderingEvents.Concat(cpuEvents).Concat(gpuEvents).Concat(markerEvents).Concat(etwEvents)
             .Where(item => item.RelativeMilliseconds >= start && item.RelativeMilliseconds <= end)
             .OrderBy(item => item.QpcTimestamp)
             .ToArray();
@@ -235,7 +260,13 @@ public static class SessionReportGenerator
             report.AppendLine($"| {item.RelativeMilliseconds.ToString("F3", CultureInfo.InvariantCulture)} | {EscapeMarkdown(item.EventType)} | {EscapeMarkdown(item.Source)} | {EscapeMarkdown(Truncate(item.Details ?? "—", 300))} |");
         }
         report.AppendLine();
+        if (etwEventsTruncated > 0)
+            report.AppendLine($"ETW event detail limit reached: {etwEventsTruncated} additional events in this interval are not listed. The complete JSONL stream remains available.");
+        report.AppendLine();
     }
+
+    private static bool IsEtwSource(string source)
+        => source is not ("WindowTrace" or "PresentMonProcess" or "PresentMonMetrics" or "WinEvent" or "WindowPoll" or "PDH" or "ETW" or "GetSystemTimes+Process.TotalProcessorTime");
 
     private static bool IsFocusEvent(string eventType)
         => eventType is "FocusLost" or "FocusGained" or "FocusLostAgain" or
