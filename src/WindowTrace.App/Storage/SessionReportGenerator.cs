@@ -221,6 +221,8 @@ public static class SessionReportGenerator
         report.AppendLine();
         report.AppendLine("- Foreground-window changes and GUI focus metadata do not prove that a game's input thread processed a key.");
         report.AppendLine("- Win32k event payloads are omitted by privacy policy; only event timing and metadata are retained.");
+        report.AppendLine("- Target-thread scheduling rows require a PID association from process thread enumeration, kernel thread lifecycle data or a matching event header. Unmapped threads are not assumed to belong to the game.");
+        report.AppendLine("- NewThreadWaitTime and OldThreadState/WaitReason values are preserved as raw ETW fields; this report does not infer undocumented units or a definitive wait cause.");
         report.AppendLine("- PresentMon frame metrics describe presentation/rendering behavior, not the exact time a game handled a keyboard input.");
         report.AppendLine("- Missing counters or provider events are unavailable data, not zero activity.");
         report.AppendLine("- Correlation between a CPU/GPU/ETW event and a delayed frame is not proof that the event caused the delay.");
