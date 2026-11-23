@@ -120,7 +120,7 @@ public sealed class WindowMonitor : IDisposable
             return null;
 
         return BuildSnapshot(new PendingWindowEvent(
-            qpc, hwnd, processId, threadId, eventType, 0, 0, Volatile.Read(ref _generation)));
+            qpc, hwnd, processId, threadId, eventType, 0, 0, null, Volatile.Read(ref _generation)));
     }
 
     public void Stop()
@@ -179,7 +179,7 @@ public sealed class WindowMonitor : IDisposable
 
             var generation = Volatile.Read(ref _generation);
             if (!_pendingEvents.Writer.TryWrite(
-                    new PendingWindowEvent(qpc, hwnd, processId, threadId, windowEventType, idObject, idChild, generation)))
+                    new PendingWindowEvent(qpc, hwnd, processId, threadId, windowEventType, idObject, idChild, eventTime, generation)))
             {
                 Interlocked.Increment(ref _droppedPendingEvents);
             }
@@ -251,7 +251,8 @@ public sealed class WindowMonitor : IDisposable
             pending.ChildId,
             focusedWindowHandle,
             guiThreadFlags,
-            focusQueryDelayMs);
+            focusQueryDelayMs,
+            pending.WinEventSystemTimeMilliseconds);
     }
 
     private static string ReadWindowTitle(nint hwnd)
@@ -299,6 +300,7 @@ public sealed class WindowMonitor : IDisposable
         string EventType,
         int ObjectId,
         int ChildId,
+        uint? WinEventSystemTimeMilliseconds,
         int Generation);
 
     [StructLayout(LayoutKind.Sequential)]
