@@ -249,6 +249,7 @@ public static class SessionReportGenerator
         report.AppendLine($"- First GPU sample: {FormatOffset(gpu, focusGained)}; {(gpu is null ? "no GPU sample was recorded in this interval" : Truncate(gpu.Details ?? "No details", 220))}");
         report.AppendLine($"- ETW events in interval (all providers): {summary.TotalEvents}");
         report.AppendLine($"- Win32k ETW events in interval: {summary.Win32kEvents}");
+        report.AppendLine($"- Win32k ETW events for target PID {focusGained.ProcessId?.ToString(CultureInfo.InvariantCulture) ?? "Unavailable"}: {summary.Win32kTargetProcessEvents}; other/unknown PID: {summary.Win32kOtherProcessEvents}");
         report.AppendLine($"- System-wide DPC events in interval (NT Kernel Logger): {summary.SystemDpcEvents}");
         report.AppendLine($"- System-wide ISR events in interval (NT Kernel Logger): {summary.SystemIsrEvents}");
         report.AppendLine($"- GPU VSync DPC events in interval (DxgKrnl): {summary.GpuVsyncDpcEvents}");
@@ -391,6 +392,8 @@ public static class SessionReportGenerator
         var details = new List<DiagnosticEvent>(Math.Min(maximumDetailRows, 300));
         var total = 0;
         var win32k = 0;
+        var win32kTargetProcess = 0;
+        var win32kOtherProcess = 0;
         var systemDpc = 0;
         var systemIsr = 0;
         var gpuVsyncDpc = 0;
@@ -433,7 +436,13 @@ public static class SessionReportGenerator
                 details.Add(item);
 
             if (item.Source.Contains("Win32k", StringComparison.OrdinalIgnoreCase))
+            {
                 win32k++;
+                if (item.ProcessId == focusGained.ProcessId)
+                    win32kTargetProcess++;
+                else
+                    win32kOtherProcess++;
+            }
             if (item.Source.Equals("NT Kernel Logger", StringComparison.OrdinalIgnoreCase) &&
                 item.EventType.Contains("DPC", StringComparison.OrdinalIgnoreCase))
                 systemDpc++;
@@ -473,7 +482,8 @@ public static class SessionReportGenerator
         }
 
         var summary = new PostFocusEtwSummary(
-            total, win32k, systemDpc, systemIsr, gpuVsyncDpc, targetReady,
+            total, win32k, win32kTargetProcess, win32kOtherProcess,
+            systemDpc, systemIsr, gpuVsyncDpc, targetReady,
             targetContextSwitches, incomingSwitches, outgoingSwitches,
             incomingWaitValues.ToArray(), outgoingStates.ToArray(), readyToRunSamples);
         return new PostFocusEtwWindow(details, summary, Math.Max(0, total - details.Count));
@@ -482,6 +492,8 @@ public static class SessionReportGenerator
     private sealed record PostFocusEtwSummary(
         int TotalEvents,
         int Win32kEvents,
+        int Win32kTargetProcessEvents,
+        int Win32kOtherProcessEvents,
         int SystemDpcEvents,
         int SystemIsrEvents,
         int GpuVsyncDpcEvents,
@@ -500,7 +512,7 @@ public static class SessionReportGenerator
     {
         public static PostFocusEtwWindow Empty { get; } = new(
             Array.Empty<DiagnosticEvent>(),
-            new PostFocusEtwSummary(0, 0, 0, 0, 0, 0, 0, 0, 0,
+            new PostFocusEtwSummary(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                 Array.Empty<string>(), Array.Empty<string>(), Array.Empty<double>()),
             0);
     }
