@@ -120,6 +120,8 @@ public sealed class JsonlEventWriter : IAsyncDisposable
         catch (Exception ex)
         {
             _lastError = ex;
+            while (_channel.Reader.TryRead(out _))
+                Interlocked.Increment(ref _droppedRecords);
         }
     }
 
@@ -138,6 +140,8 @@ public sealed class JsonlEventWriter : IAsyncDisposable
         }
         finally
         {
+            while (_channel.Reader.TryRead(out _))
+                Interlocked.Increment(ref _droppedRecords);
             _cancellation.Dispose();
         }
     }
