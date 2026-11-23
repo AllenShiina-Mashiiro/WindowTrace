@@ -168,9 +168,12 @@ public static class SessionReportGenerator
         report.AppendLine($"- Records not persisted (total): {quality?.TotalRecordsNotPersisted.ToString(CultureInfo.InvariantCulture) ?? "Unavailable"}");
         report.AppendLine($"  - Queue overflow: {quality?.QueueOverflowDroppedRecords.ToString(CultureInfo.InvariantCulture) ?? "Unavailable"}");
         report.AppendLine($"    - Critical-event queue overflow (subset): {quality?.PriorityQueueOverflowDroppedRecords?.ToString(CultureInfo.InvariantCulture) ?? "Unavailable"}");
-        report.AppendLine($"  - File size limit: {quality?.FileLimitDroppedRecords.ToString(CultureInfo.InvariantCulture) ?? "Unavailable"}");
+        report.AppendLine($"  - Regular telemetry budget drops: {quality?.RegularBudgetDroppedRecords?.ToString(CultureInfo.InvariantCulture) ?? "Unavailable"}");
+        report.AppendLine($"  - Hard file-cap drops: {quality?.HardFileLimitDroppedRecords?.ToString(CultureInfo.InvariantCulture) ?? "Unavailable"}");
+        report.AppendLine($"  - File budget drops (combined): {quality?.FileLimitDroppedRecords.ToString(CultureInfo.InvariantCulture) ?? "Unavailable"}");
         report.AppendLine($"  - Writer errors: {quality?.WriterErrorDroppedRecords.ToString(CultureInfo.InvariantCulture) ?? "Unavailable"}");
-        report.AppendLine($"- File size limit reached: {quality?.FileSizeLimitReached.ToString() ?? "Unavailable"}");
+        report.AppendLine($"- Regular telemetry byte budget reached: {quality?.RegularFileBudgetReached?.ToString() ?? "Unavailable"}");
+        report.AppendLine($"- Hard file size limit reached: {quality?.FileSizeLimitReached.ToString() ?? "Unavailable"}");
         report.AppendLine($"- Writer error: {quality?.WriterError ?? "None reported"}");
         report.AppendLine();
 
