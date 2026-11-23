@@ -38,6 +38,37 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public void FrameMetricsAggregator_ComputesRollingFpsAndFrameTimeVariance()
+    {
+        var clock = new QpcClock();
+        var aggregator = new FrameMetricsAggregator(clock);
+        var fields = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["MsBetweenPresents"] = "16",
+            ["ProcessID"] = "4242",
+            ["Application"] = "TestGame",
+            ["PresentMode"] = "Composed: Flip",
+            ["MsGPUBusy"] = "8",
+            ["MsGPUWait"] = "1",
+            ["Dropped"] = "0"
+        };
+
+        DiagnosticEvent? summary = null;
+        for (var i = 0; i <= 120; i++)
+        {
+            var qpc = clock.AnchorTimestamp + (long)(clock.Frequency * i / 60d);
+            summary = aggregator.AddFrame(qpc, fields) ?? summary;
+        }
+
+        Assert.NotNull(summary);
+        Assert.Equal("RenderingSummary", summary!.EventType);
+        Assert.Equal((uint)4242, summary.ProcessId);
+        Assert.Contains("FPS=62.50", summary.Details);
+        Assert.Contains("FrameTimeVarianceMs2=0.0000", summary.Details);
+        Assert.Contains("PresentMode=Composed: Flip", summary.Details);
+    }
+
+    [Fact]
     public async Task DiagnosticSessionManager_CapturesPreRollAndFocusTransitions()
     {
         var directory = Path.Combine(Path.GetTempPath(), "WindowTrace.Tests", Guid.NewGuid().ToString("N"));
