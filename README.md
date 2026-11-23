@@ -114,7 +114,7 @@ PresentMon 2.x is an optional external dependency and is not bundled in this rep
 
 ## Permissions
 
-PresentMon real-time tracing can fail with access denied unless the current user has the required performance-tracing permissions or the application is run elevated. WindowTrace does not automatically request elevation, modify local group membership, or change system security settings. If PresentMon cannot start, its error is recorded and the other collectors continue where possible.
+PresentMon real-time tracing and the NT Kernel Logger session can fail with access denied unless the current user has the required performance-tracing permissions or the application is run elevated. WindowTrace does not automatically request elevation, modify local group membership, or change system security settings. If PresentMon cannot start, its error is recorded and the other collectors continue where possible.
 
 ## Safety and diagnostic limitations
 
