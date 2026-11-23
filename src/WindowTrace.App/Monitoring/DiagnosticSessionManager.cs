@@ -50,6 +50,7 @@ public sealed class DiagnosticSessionManager
 
     public DiagnosticSessionState State { get; private set; } = DiagnosticSessionState.Idle;
     public string? LastCompletedSessionPath { get; private set; }
+    public string? LastCompletedReportPath { get; private set; }
     public bool IsSessionActive { get { lock (_gate) return _writer is not null; } }
     public uint? TargetProcessId { get { lock (_gate) return _targetProcessId; } }
     public string? TargetProcessName { get { lock (_gate) return _targetProcessName; } }
@@ -370,6 +371,16 @@ public sealed class DiagnosticSessionManager
         catch (Exception ex)
         {
             StatusChanged?.Invoke($"Unable to write session quality report: {ex.Message}");
+        }
+
+        try
+        {
+            LastCompletedReportPath = await SessionReportGenerator.WriteAsync(writer.FilePath);
+            StatusChanged?.Invoke($"Human-readable diagnostic report saved: {LastCompletedReportPath}");
+        }
+        catch (Exception ex)
+        {
+            StatusChanged?.Invoke($"Unable to generate diagnostic report: {ex.Message}");
         }
     }
 
