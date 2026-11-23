@@ -185,7 +185,7 @@ public sealed class PresentMonProcess : IAsyncDisposable
     }
 
     private static string EscapeCsvValue(string value)
-        => """ + value.Replace(""", """") + """;
+        => "\"" + value.Replace("\"", "\"\"") + "\"";
 
     private static int SafeExitCode(Process process)
     {
