@@ -328,6 +328,40 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public async Task DiagnosticSessionManager_TargetSelectedWhileBackgroundStartsOnlyAfterItsFirstFocusLoss()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "WindowTrace.Tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var clock = new QpcClock();
+        var manager = new DiagnosticSessionManager(clock, new BoundedEventBuffer(1000), directory);
+
+        try
+        {
+            // The picker dialog belongs to WindowTrace, so the target game is not
+            // foreground when the user confirms the selection.
+            manager.SetTarget(111, "TestGame", 222);
+
+            manager.PublishForeground(
+                CreateEvent(clock.GetTimestamp()) with { EventType = "ForegroundChanged", ProcessId = 111 },
+                111);
+
+            Assert.False(manager.IsSessionActive);
+
+            manager.PublishForeground(
+                CreateEvent(clock.GetTimestamp()) with { EventType = "ForegroundChanged", ProcessId = 222 },
+                222);
+
+            Assert.True(manager.IsSessionActive);
+            Assert.Equal(DiagnosticSessionState.FocusLost, manager.State);
+        }
+        finally
+        {
+            try { await manager.StopAsync(); } catch { }
+            try { Directory.Delete(directory, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
     public async Task DiagnosticSessionManager_ResetsPostCaptureDeadlineAfterRepeatedFocusLoss()
     {
         var directory = Path.Combine(Path.GetTempPath(), "WindowTrace.Tests", Guid.NewGuid().ToString("N"));
