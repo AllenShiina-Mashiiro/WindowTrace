@@ -46,7 +46,7 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
             catch { return _eventsLost; }
         }
     }
-    public bool IsRunning => _session is not null;
+    public bool IsRunning => _session is not null && _processingTask is { IsCompleted: false };
 
     public void Start()
     {
