@@ -343,7 +343,7 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
             null,
             null,
             null,
-            $"ThreadMappingSource={mappingSource};ThreadProcessAssociation=KernelThreadLifecycleOrEventHeader"));
+            $"ThreadMappingSource={mappingSource};ThreadProcessAssociation={mappingSource}"));
     }
 
     private static Dictionary<string, object?> ReadPayload(TraceEvent data)
