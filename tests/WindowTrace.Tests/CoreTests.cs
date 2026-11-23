@@ -394,7 +394,7 @@ public sealed class CoreTests
                 CreateEvent(secondGain) with { EventType = "ForegroundChanged", ProcessId = 111 },
                 111);
 
-            var finalDeadline = secondGain + (long)(clock.Frequency * 5d);
+            var finalDeadline = secondGain + (long)(clock.Frequency * 3d);
             await manager.CheckPostCaptureDeadlineAsync(finalDeadline - 1);
 
             Assert.True(manager.IsSessionActive);
@@ -416,6 +416,59 @@ public sealed class CoreTests
             Assert.Equal(2, events.Count(item => item!.EventType == "FocusGained"));
             Assert.Contains(events, item => item!.EventType == "FocusLostAgain");
             Assert.Contains(events, item => item!.EventType == "DiagnosticSessionCompleted");
+        }
+        finally
+        {
+            try { await manager.StopAsync(); } catch { }
+            try { Directory.Delete(directory, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task DiagnosticSessionManager_CompletesAfterMinimumWhenCpuAndGpuEvidenceArrive()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "WindowTrace.Tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var clock = new QpcClock();
+        var manager = new DiagnosticSessionManager(clock, new BoundedEventBuffer(1000), directory);
+
+        try
+        {
+            manager.SetTarget(111, "TestGame", 111);
+            var origin = clock.GetTimestamp();
+            var focusLost = origin + clock.Frequency;
+            manager.PublishForeground(
+                CreateEvent(focusLost) with { EventType = "ForegroundChanged", ProcessId = 222 },
+                222);
+
+            var focusGained = origin + (long)(clock.Frequency * 2d);
+            manager.PublishForeground(
+                CreateEvent(focusGained) with { EventType = "ForegroundChanged", ProcessId = 111 },
+                111);
+
+            var sampleQpc = focusGained + (long)(clock.Frequency * 1.1d);
+            manager.PublishTelemetry(CreateEvent(sampleQpc) with
+            {
+                EventType = "CpuSample",
+                QpcTimestamp = sampleQpc
+            });
+            manager.PublishTelemetry(CreateEvent(sampleQpc + 1) with
+            {
+                EventType = "GpuPdhSample",
+                QpcTimestamp = sampleQpc + 1
+            });
+
+            var minimumDeadline = focusGained + (long)(clock.Frequency * 1.5d);
+            await manager.CheckPostCaptureDeadlineAsync(minimumDeadline - 1);
+            Assert.True(manager.IsSessionActive);
+
+            await manager.CheckPostCaptureDeadlineAsync(minimumDeadline);
+            Assert.False(manager.IsSessionActive);
+            Assert.Equal(DiagnosticSessionState.Completed, manager.State);
+
+            var jsonlPath = Assert.IsType<string>(manager.LastCompletedSessionPath);
+            var lines = await File.ReadAllLinesAsync(jsonlPath);
+            Assert.Contains(lines, line => line.Contains("CompletionReason=PostFocusEvidenceReady", StringComparison.Ordinal));
         }
         finally
         {
@@ -550,7 +603,7 @@ public sealed class CoreTests
                 CreateEvent(duplicateForeground) with { EventType = "ForegroundChanged", ProcessId = 111 },
                 111);
 
-            var expectedDeadline = focusGained + (long)(clock.Frequency * 5d);
+            var expectedDeadline = focusGained + (long)(clock.Frequency * 3d);
             await manager.CheckPostCaptureDeadlineAsync(expectedDeadline - 1);
 
             Assert.True(manager.IsSessionActive);
