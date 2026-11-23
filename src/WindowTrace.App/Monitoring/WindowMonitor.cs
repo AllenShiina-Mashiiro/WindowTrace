@@ -204,6 +204,7 @@ public sealed class WindowMonitor : IDisposable
 
         nint? focusedWindowHandle = null;
         uint? guiThreadFlags = null;
+        var focusQueryStartQpc = _clock.GetTimestamp();
         var guiInfo = new GuiThreadInfo
         {
             Size = (uint)Marshal.SizeOf<GuiThreadInfo>()
@@ -214,6 +215,9 @@ public sealed class WindowMonitor : IDisposable
             focusedWindowHandle = guiInfo.FocusWindow == nint.Zero ? null : guiInfo.FocusWindow;
             guiThreadFlags = guiInfo.Flags;
         }
+
+        var focusQueryEndQpc = _clock.GetTimestamp();
+        var focusQueryDelayMs = _clock.ElapsedMilliseconds(pending.QpcTimestamp, focusQueryEndQpc);
 
         return new WindowSnapshot(
             pending.QpcTimestamp,
@@ -228,7 +232,8 @@ public sealed class WindowMonitor : IDisposable
             pending.ObjectId,
             pending.ChildId,
             focusedWindowHandle,
-            guiThreadFlags);
+            guiThreadFlags,
+            focusQueryDelayMs);
     }
 
     private static string ReadWindowTitle(nint hwnd)
