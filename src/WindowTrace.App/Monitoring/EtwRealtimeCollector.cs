@@ -113,6 +113,9 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
                 }
             }
 
+            if (_providerStatuses.All(p => p.Status != "Enabled"))
+                throw new InvalidOperationException("No requested ETW provider could be enabled on this system.");
+
             _session = session;
             _processingTask = Task.Factory.StartNew(
                 () => session.Source.Process(),
