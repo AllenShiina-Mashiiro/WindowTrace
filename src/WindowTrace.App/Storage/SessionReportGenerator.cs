@@ -25,6 +25,7 @@ public static class SessionReportGenerator
         var cpuEvents = new List<DiagnosticEvent>();
         var gpuEvents = new List<DiagnosticEvent>();
         var markerEvents = new List<DiagnosticEvent>();
+        var collectorEvents = new List<DiagnosticEvent>();
         var postFocusEtwEvents = new List<DiagnosticEvent>();
         var recentEtwEvents = new Queue<DiagnosticEvent>();
         var postFocusEtwTruncated = 0;
@@ -66,6 +67,7 @@ public static class SessionReportGenerator
                 AddRecent(cpuEvents, item, item.EventType == "CpuSample");
                 AddRecent(gpuEvents, item, item.EventType == "GpuPdhSample");
                 AddRecent(markerEvents, item, item.EventType is "InputTestMarker" or "TargetSelected" or "PresentMonCapability" or "EtwProviderCapability");
+                AddRecent(collectorEvents, item, item.EventType is "CollectorWarning" or "WindowMonitorWarning" or "WindowMonitorQueueDrops" or "EtwEventsLostCounter");
 
                 if (IsEtwSource(item.Source))
                 {
@@ -184,10 +186,11 @@ public static class SessionReportGenerator
 
         AppendEventTable(report, "Focus and window transitions", focusEvents);
         AppendEventTable(report, "Input markers and collector capabilities", markerEvents);
+        AppendEventTable(report, "Collector health and data gaps", collectorEvents);
         AppendEventTable(report, "Rendering summaries", renderingEvents);
         AppendEventTable(report, "CPU samples", cpuEvents);
         AppendEventTable(report, "GPU samples", gpuEvents);
-        AppendLatestPostFocusWindow(report, focusEvents, renderingEvents, cpuEvents, gpuEvents, markerEvents, postFocusEtwEvents, postFocusEtwTruncated);
+        AppendLatestPostFocusWindow(report, focusEvents, renderingEvents, cpuEvents, gpuEvents, markerEvents, collectorEvents, postFocusEtwEvents, postFocusEtwTruncated);
 
         report.AppendLine("## ETW event volume");
         report.AppendLine();
@@ -231,6 +234,7 @@ public static class SessionReportGenerator
         IReadOnlyList<DiagnosticEvent> cpuEvents,
         IReadOnlyList<DiagnosticEvent> gpuEvents,
         IReadOnlyList<DiagnosticEvent> markerEvents,
+        IReadOnlyList<DiagnosticEvent> collectorEvents,
         IReadOnlyList<DiagnosticEvent> etwEvents,
         int etwEventsTruncated)
     {
@@ -254,7 +258,7 @@ public static class SessionReportGenerator
         report.AppendLine($"Reference interval: {start.ToString("F3", CultureInfo.InvariantCulture)} to {end.ToString("F3", CultureInfo.InvariantCulture)} ms relative to session start.");
         report.AppendLine();
 
-        var windowEvents = renderingEvents.Concat(cpuEvents).Concat(gpuEvents).Concat(markerEvents).Concat(etwEvents)
+        var windowEvents = renderingEvents.Concat(cpuEvents).Concat(gpuEvents).Concat(markerEvents).Concat(collectorEvents).Concat(etwEvents)
             .Where(item => item.RelativeMilliseconds >= start && item.RelativeMilliseconds <= end)
             .OrderBy(item => item.QpcTimestamp)
             .ToArray();
