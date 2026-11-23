@@ -50,7 +50,10 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
         if (processId == 0)
             throw new ArgumentOutOfRangeException(nameof(processId));
 
-        Volatile.Write(ref _targetProcessId, checked((int)processId));
+        var previousTargetProcessId = Interlocked.Exchange(ref _targetProcessId, checked((int)processId));
+        if (previousTargetProcessId == (int)processId)
+            return;
+
         _targetThreadReadyQpc.Clear();
         foreach (var mapping in _threadProcessIds.Where(pair => pair.Value == processId))
             PublishTargetThreadDiscovered(mapping.Key, processId, "ExistingKernelThreadMap", _clock.GetTimestamp());
