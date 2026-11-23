@@ -23,6 +23,7 @@ public sealed class JsonlEventWriter : IAsyncDisposable
     private readonly Task _worker;
     private readonly string _path;
     private readonly CancellationTokenSource _cancellation = new();
+    private readonly SemaphoreSlim _signal = new(0);
     private readonly long _criticalReserveBytes;
     private long _queueOverflowDroppedRecords;
     private long _priorityQueueOverflowDroppedRecords;
@@ -111,6 +112,7 @@ public sealed class JsonlEventWriter : IAsyncDisposable
             return false;
         }
 
+        _signal.Release();
         return true;
     }
 
@@ -119,6 +121,7 @@ public sealed class JsonlEventWriter : IAsyncDisposable
             "DiagnosticSessionStarted" or
             "DiagnosticSessionCompleted" or
             "DiagnosticSessionStopped" or
+            "PreRollCaptureSummary" or
             "FocusLost" or
             "FocusGained" or
             "FocusLostAgain" or
@@ -170,12 +173,11 @@ public sealed class JsonlEventWriter : IAsyncDisposable
                         _normalChannel.Reader.Completion.IsCompleted)
                         break;
 
-                    var priorityWait = _priorityChannel.Reader.WaitToReadAsync(_cancellation.Token).AsTask();
-                    var normalWait = _normalChannel.Reader.WaitToReadAsync(_cancellation.Token).AsTask();
-                    await Task.WhenAny(priorityWait, normalWait).ConfigureAwait(false);
+                    await _signal.WaitAsync(_cancellation.Token).ConfigureAwait(false);
                     continue;
                 }
 
+                long preRollRecordsInBatch = 0;
                 foreach (var entry in batch)
                 {
                     var json = JsonSerializer.Serialize(entry.Item, JsonOptions);
@@ -201,10 +203,12 @@ public sealed class JsonlEventWriter : IAsyncDisposable
                     await writer.WriteLineAsync(json).ConfigureAwait(false);
                     Interlocked.Add(ref _bytesWritten, lineBytes);
                     if (entry.Item.CapturePhase == "PreRoll")
-                        Interlocked.Increment(ref _preRollRecordsWritten);
+                        preRollRecordsInBatch++;
                 }
 
                 await writer.FlushAsync().ConfigureAwait(false);
+                if (preRollRecordsInBatch > 0)
+                    Interlocked.Add(ref _preRollRecordsWritten, preRollRecordsInBatch);
             }
         }
         catch (OperationCanceledException) when (_cancellation.IsCancellationRequested)
@@ -224,6 +228,7 @@ public sealed class JsonlEventWriter : IAsyncDisposable
     {
         _priorityChannel.Writer.TryComplete();
         _normalChannel.Writer.TryComplete();
+        _signal.Release();
         try
         {
             await _worker.WaitAsync(TimeSpan.FromSeconds(15));
@@ -250,6 +255,7 @@ public sealed class JsonlEventWriter : IAsyncDisposable
             }
 
             _cancellation.Dispose();
+            _signal.Dispose();
         }
     }
 }
