@@ -163,6 +163,7 @@ public static class SessionReportGenerator
         report.AppendLine($"- Pre-roll requested / observed: {quality?.RequestedPreRollMilliseconds.ToString("F0", CultureInfo.InvariantCulture) ?? "Unavailable"} / {quality?.ActualPreRollMilliseconds.ToString("F3", CultureInfo.InvariantCulture) ?? "Unavailable"} ms");
         report.AppendLine($"- Buffer evictions (start / end): {quality?.BufferEvictionsAtSessionStart.ToString(CultureInfo.InvariantCulture) ?? "Unavailable"} / {quality?.BufferEvictionsAtFinalization.ToString(CultureInfo.InvariantCulture) ?? "Unavailable"}");
         report.AppendLine($"- ETW events lost: {quality?.EtwEventsLostAtFinalization?.ToString(CultureInfo.InvariantCulture) ?? "Unavailable"}");
+        report.AppendLine($"- ETW timestamps using collector-receipt fallback: {quality?.EtwTimestampFallbackCount.ToString(CultureInfo.InvariantCulture) ?? "Unavailable"}");
         report.AppendLine($"- Records not persisted (total): {quality?.TotalRecordsNotPersisted.ToString(CultureInfo.InvariantCulture) ?? "Unavailable"}");
         report.AppendLine($"  - Queue overflow: {quality?.QueueOverflowDroppedRecords.ToString(CultureInfo.InvariantCulture) ?? "Unavailable"}");
         report.AppendLine($"  - File size limit: {quality?.FileLimitDroppedRecords.ToString(CultureInfo.InvariantCulture) ?? "Unavailable"}");
