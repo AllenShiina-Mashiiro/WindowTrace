@@ -44,6 +44,7 @@ public sealed class DiagnosticSessionManager
     public event Action<string>? StatusChanged;
 
     public DiagnosticSessionState State { get; private set; } = DiagnosticSessionState.Idle;
+    public string? LastCompletedSessionPath { get; private set; }
     public bool IsSessionActive { get { lock (_gate) return _writer is not null; } }
     public uint? TargetProcessId { get { lock (_gate) return _targetProcessId; } }
     public string? TargetProcessName { get { lock (_gate) return _targetProcessName; } }
@@ -187,6 +188,7 @@ public sealed class DiagnosticSessionManager
                 return;
 
             completedWriter = _writer;
+            LastCompletedSessionPath = completedWriter.FilePath;
             _writer = null;
             _postCaptureDeadlineQpc = null;
             State = DiagnosticSessionState.Completed;
@@ -202,6 +204,8 @@ public sealed class DiagnosticSessionManager
         lock (_gate)
         {
             writer = _writer;
+            if (writer is not null)
+                LastCompletedSessionPath = writer.FilePath;
             _writer = null;
             _postCaptureDeadlineQpc = null;
             if (writer is not null)
