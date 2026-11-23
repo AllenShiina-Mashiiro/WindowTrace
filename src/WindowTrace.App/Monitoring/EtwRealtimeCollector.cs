@@ -74,11 +74,13 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
                     KernelTraceEventParser.Keywords.Process |
                     KernelTraceEventParser.Keywords.Thread |
                     KernelTraceEventParser.Keywords.ContextSwitch |
-                    KernelTraceEventParser.Keywords.Dispatcher);
+                    KernelTraceEventParser.Keywords.Dispatcher |
+                    KernelTraceEventParser.Keywords.DeferedProcedureCalls |
+                    KernelTraceEventParser.Keywords.Interrupt);
                 _providerStatuses.Add(new EtwProviderStatus(
                     "NT Kernel Logger",
                     "Enabled",
-                    "Process, Thread, ContextSwitch and Dispatcher keywords"));
+                    "Process, Thread, ContextSwitch, Dispatcher, DPC and Interrupt keywords"));
             }
             catch (Exception ex)
             {
