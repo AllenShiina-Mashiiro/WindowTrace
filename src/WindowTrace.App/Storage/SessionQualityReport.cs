@@ -24,7 +24,7 @@ public sealed record SessionQualityReport(
     bool FileSizeLimitReached,
     string? WriterError)
 {
-    public long TotalRecordsNotPersisted => WriterQueueDroppedRecords;
+    public long TotalRecordsNotPersisted => Math.Max(WriterQueueDroppedRecords, QueueOverflowDroppedRecords + FileLimitDroppedRecords + WriterErrorDroppedRecords);
     public long QueueOverflowDroppedRecords { get; init; }
     public long FileLimitDroppedRecords { get; init; }
     public long WriterErrorDroppedRecords { get; init; }
