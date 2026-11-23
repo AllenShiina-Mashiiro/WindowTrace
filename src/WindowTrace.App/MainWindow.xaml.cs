@@ -134,29 +134,22 @@ public partial class MainWindow : Window
             StatusText.Text = "Monitoring window focus and starting realtime collectors";
             FooterText.Text = "Window monitor active.";
 
-            _etwCollector = new EtwRealtimeCollector(_clock);
-            _etwCollector.EventReceived += OnEtwEvent;
-            _etwCollector.CollectorWarning += OnCollectorWarning;
-            try
-            {
-                _etwCollector.Start();
-                var enabled = _etwCollector.ProviderStatuses.Count(p => p.Status == "Enabled");
-                FooterText.Text = $"ETW realtime consumer started. Enabled providers: {enabled}/{_etwCollector.ProviderStatuses.Count}. Kernel scheduling events may require administrator privileges.";
-            }
-            catch (Exception ex)
-            {
-                OnCollectorWarning($"ETW collector could not start: {ex.Message}");
-            }
-
             _sessionTimer.Start();
-            AddSystemEvent("MonitoringStarted", "Window monitor and realtime ETW collection started.");
+            AddSystemEvent("MonitoringStarted", "Window monitor started; ETW starts when a target process is selected.");
 
             var initialForeground = _windowMonitor.CaptureForeground();
             if (initialForeground is not null)
                 OnForegroundChanged(initialForeground);
 
             if (_sessions.TargetProcessId is uint targetPid)
+            {
+                EnsureEtwCollectorStarted();
                 await StartTargetCollectorsAsync(targetPid);
+            }
+            else
+            {
+                FooterText.Text = "Window monitor active. Select the game process to enable target-scoped CPU/GPU and ETW diagnostics.";
+            }
         }
         catch (Exception ex)
         {
@@ -227,7 +220,10 @@ public partial class MainWindow : Window
             _sessions.SetTarget(snapshot.ProcessId, snapshot.ProcessName, snapshot.ProcessId);
             TargetText.Text = $"Target: {snapshot.ProcessName} (PID {snapshot.ProcessId}) | {snapshot.WindowTitle}";
             if (_isMonitoring)
+            {
+                EnsureEtwCollectorStarted();
                 await StartTargetCollectorsAsync(snapshot.ProcessId);
+            }
         }
         catch (Exception ex)
         {
@@ -243,6 +239,7 @@ public partial class MainWindow : Window
                 throw new InvalidOperationException("A diagnostic session is active. Stop monitoring before clearing the target.");
 
             await StopTargetCollectorsAsync();
+            await StopEtwCollectorAsync();
             _sessions.ClearTarget();
             TargetText.Text = "No target selected. Bring the game to the foreground, then select it below.";
         }
@@ -361,6 +358,40 @@ public partial class MainWindow : Window
             _ = collector.DisposeAsync();
             OnCollectorWarning($"PresentMon could not start: {ex.Message}");
         }
+    }
+
+    private void EnsureEtwCollectorStarted()
+    {
+        if (_etwCollector is not null)
+            return;
+
+        var collector = new EtwRealtimeCollector(_clock);
+        collector.EventReceived += OnEtwEvent;
+        collector.CollectorWarning += OnCollectorWarning;
+        try
+        {
+            collector.Start();
+            _etwCollector = collector;
+            var enabled = collector.ProviderStatuses.Count(p => p.Status == "Enabled");
+            FooterText.Text = $"ETW realtime consumer started. Enabled providers: {enabled}/{collector.ProviderStatuses.Count}. Kernel scheduling events may require administrator privileges.";
+        }
+        catch (Exception ex)
+        {
+            _ = collector.DisposeAsync();
+            OnCollectorWarning($"ETW collector could not start: {ex.Message}");
+        }
+    }
+
+    private async Task StopEtwCollectorAsync()
+    {
+        if (_etwCollector is null)
+            return;
+
+        await _etwCollector.DisposeAsync();
+        FooterText.Text = _etwCollector.EventsLost >= 0
+            ? $"ETW collector stopped. Events lost: {_etwCollector.EventsLost}."
+            : "ETW collector stopped. Event-loss count unavailable.";
+        _etwCollector = null;
     }
 
     private async Task StopTargetCollectorsAsync()
@@ -529,16 +560,7 @@ public partial class MainWindow : Window
 
         await StopTargetCollectorsAsync();
 
-        if (_etwCollector is not null)
-        {
-            await _etwCollector.DisposeAsync();
-            var lost = _etwCollector.EventsLost;
-            FooterText.Text = lost >= 0
-                ? $"ETW collector stopped. Events lost reported by TraceEvent: {lost}."
-                : "ETW collector stopped. Event-loss count unavailable.";
-            _etwCollector = null;
-        }
-
+        await StopEtwCollectorAsync();
         await _sessions.StopAsync();
 
         StartButton.IsEnabled = true;
