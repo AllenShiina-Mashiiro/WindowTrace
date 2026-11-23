@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Xunit;
 using WindowTrace.Core;
 using WindowTrace.Storage;
 
