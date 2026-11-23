@@ -48,7 +48,9 @@ Inspect QPC values, not only wall-clock display strings.
 ### Window monitor
 - Test Win+Tab, Alt+Tab, minimize/restore and returning to the game.
 - Confirm HWND, PID, TID, process name and window title are plausible.
-- Confirm that a foreground change is not interpreted as proof that the game's input thread has resumed.
+- Compare foreground HWND with the focused child HWND reported by GetGUIThreadInfo; unavailable focus data must remain unavailable.
+- Confirm ObjectFocusChanged, minimize and restore events are distinguishable from foreground changes.
+- Confirm that a foreground change or child-focus event is not interpreted as proof that the game's input thread has resumed.
 
 ### ETW
 - Record provider status for each machine.
