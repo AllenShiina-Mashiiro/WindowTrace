@@ -24,7 +24,9 @@
                 <Button x:Name="StartButton" Content="Start monitoring" Click="StartButton_Click"
                         Padding="16,9" Margin="0,0,8,0" Background="#2868C7" Foreground="White" BorderThickness="0" />
                 <Button x:Name="StopButton" Content="Stop" Click="StopButton_Click"
-                        Padding="16,9" IsEnabled="False" />
+                        Padding="16,9" Margin="0,0,8,0" IsEnabled="False" />
+                <Button x:Name="ExportButton" Content="Export last session CSV" Click="ExportButton_Click"
+                        Padding="16,9" />
             </StackPanel>
         </DockPanel>
 
