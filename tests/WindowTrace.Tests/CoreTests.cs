@@ -376,8 +376,17 @@ public sealed class CoreTests
                 .Where(item => item is not null)
                 .ToArray();
 
-            Assert.Contains(events, item => item!.EventType == "PreRollEvent" && item.SessionId is not null);
+            Assert.Contains(events, item => item!.EventType == "PreRollEvent" && item.SessionId is not null && item.CapturePhase == "PreRoll");
             Assert.Contains(events, item => item!.EventType == "FocusLost");
+
+            var quality = System.Text.Json.JsonSerializer.Deserialize<SessionQualityReport>(
+                await File.ReadAllTextAsync(Path.ChangeExtension(jsonlPath, ".quality.json")));
+            Assert.NotNull(quality);
+            Assert.True(quality!.PreRollEventsSelected >= 1);
+            Assert.True(quality.PreRollEventsQueued >= 1);
+            Assert.True(quality.PreRollEventsWritten >= 1);
+            Assert.True(quality.PreRollEventsSelected >= quality.PreRollEventsQueued);
+            Assert.True(quality.PreRollEventsQueued >= quality.PreRollEventsWritten);
             Assert.Contains(events, item => item!.EventType == "FocusGained");
             Assert.Contains(events, item => item!.EventType == "DiagnosticSessionStopped");
         }
@@ -628,6 +637,51 @@ public sealed class CoreTests
             Assert.True(writer.FileLimitDroppedRecords >= 2);
             Assert.Equal(0, writer.WriterErrorDroppedRecords);
             Assert.True(writer.BytesWritten <= maxBytes);
+            Assert.Null(writer.LastError);
+        }
+        finally
+        {
+            try { Directory.Delete(directory, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task JsonlEventWriter_PreservesCriticalMarkersAfterRegularFileBudgetIsReached()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "WindowTrace.Tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, "priority.jsonl");
+
+        try
+        {
+            var writer = new JsonlEventWriter(
+                path, queueCapacity: 4096, maxBytes: 1024 * 1024,
+                priorityQueueCapacity: 16, criticalReserveBytes: 128 * 1024);
+            var detail = new string('x', 4096);
+            for (var i = 0; i < 2000 && !writer.LimitReached; i++)
+            {
+                writer.TryWrite(CreateEvent(i + 1) with
+                {
+                    EventType = "HighVolumeTelemetry",
+                    Details = detail
+                });
+                if (i % 20 == 0)
+                    await Task.Delay(1);
+            }
+
+            Assert.True(writer.LimitReached);
+            Assert.True(writer.TryWrite(CreateEvent(9000) with
+            {
+                EventType = "FocusGained",
+                Details = "Critical focus marker"
+            }));
+
+            await writer.DisposeAsync();
+
+            var lines = await File.ReadAllLinesAsync(path);
+            Assert.Contains(lines, line => line.Contains("Critical focus marker", StringComparison.Ordinal));
+            Assert.True(writer.FileLimitDroppedRecords > 0);
+            Assert.True(writer.BytesWritten <= writer.MaxBytes);
             Assert.Null(writer.LastError);
         }
         finally
