@@ -66,6 +66,7 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
         try
         {
             session.Source.Kernel.All += OnTraceEvent;
+            session.Source.Kernel.ThreadCSwitch += OnContextSwitch;
             session.Source.Dynamic.All += OnTraceEvent;
 
             try
@@ -146,6 +147,9 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
             var threadId = data.ThreadID >= 0 ? (uint?)data.ThreadID : null;
             var providerName = data.ProviderName ?? "UnknownProvider";
             var eventName = data.EventName ?? "UnknownEvent";
+            if (eventName.Contains("CSwitch", StringComparison.OrdinalIgnoreCase))
+                return;
+
             var details = BuildPrivacySafeDetails(providerName, eventName, data);
 
             EventReceived?.Invoke(new DiagnosticEvent(
@@ -166,6 +170,44 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
         catch (Exception ex)
         {
             CollectorWarning?.Invoke($"ETW event normalization failed: {ex.Message}");
+        }
+    }
+
+    private void OnContextSwitch(dynamic data)
+    {
+        try
+        {
+#pragma warning disable CS0618
+            long qpc = data.TimeStampQPC;
+#pragma warning restore CS0618
+            if (qpc <= 0)
+                qpc = _clock.GetTimestamp();
+
+            var payloadNames = (string[])data.PayloadNames;
+            var payload = new List<string>(payloadNames.Length);
+            for (var i = 0; i < payloadNames.Length; i++)
+                payload.Add($"{payloadNames[i]}={data.PayloadValue(i)}");
+
+            var processIdValue = (int)data.ProcessID;
+            var threadIdValue = (int)data.ThreadID;
+            EventReceived?.Invoke(new DiagnosticEvent(
+                Guid.NewGuid(),
+                "ThreadContextSwitch",
+                "NT Kernel Logger",
+                qpc,
+                _clock.Frequency,
+                _clock.ToUtc(qpc),
+                _clock.ElapsedMilliseconds(_clock.AnchorTimestamp, qpc),
+                processIdValue >= 0 ? (uint?)processIdValue : null,
+                threadIdValue >= 0 ? (uint?)threadIdValue : null,
+                null,
+                (string?)data.ProcessName,
+                null,
+                string.Join(";", payload)));
+        }
+        catch (Exception ex)
+        {
+            CollectorWarning?.Invoke($"Context-switch event parsing failed: {ex.Message}");
         }
     }
 
