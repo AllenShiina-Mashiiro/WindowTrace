@@ -1,0 +1,16 @@
+# Build output
+**/bin/
+**/obj/
+.vs/
+*.user
+*.suo
+
+# Local diagnostics
+diagnostics/
+*.etl
+*.jsonl
+*.csv
+
+# IDE
+.idea/
+.vscode/
