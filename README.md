@@ -39,7 +39,7 @@ Every session records Windows version/build, DisplayVersion, UBR (when readable)
 - Real-time ETW consumer for kernel Process, Thread, ContextSwitch and Dispatcher events, plus runtime provider checks for Win32k, DWM, DxgKrnl, DXGI, Kernel-Process and Kernel-Power. ETW is system-wide; the captured trace can include events from other processes.
 - 1-second system CPU and target-process CPU sampling.
 - Optional PDH GPU Engine utilization and GPU memory counters, where the local Windows counter set supports them.
-- Optional PresentMon child process. The process is filtered to the selected PID and started with `--qpc_time`, `--output_stdout`, `--no_console_stats` and `--no_track_input`.
+- Optional PresentMon 2.x child process. The process is filtered to the selected PID and started with `--qpc_time`, `--output_stdout`, `--no_console_stats` and `--no_track_input`.
 - Optional timestamp-only input marker. It is off by default and registers only Ctrl+Alt+F12 when explicitly enabled.
 - JSONL event storage, session environment metadata, session quality report and CSV export.
 - Bounded event queue, buffer eviction accounting and a 256 MiB per-session JSONL file cap.
@@ -108,7 +108,7 @@ dotnet test .\tests\WindowTrace.Tests\WindowTrace.Tests.csproj -c Release
 dotnet run --project .\src\WindowTrace.App\WindowTrace.App.csproj
 ```
 
-PresentMon is an optional external dependency and is not bundled in this repository. Obtain it from the official [PresentMon project](https://github.com/GameTechDev/PresentMon).
+PresentMon 2.x is an optional external dependency and is not bundled in this repository. Obtain it from the official [PresentMon project](https://github.com/GameTechDev/PresentMon).
 
 ## Safety and diagnostic limitations
 
