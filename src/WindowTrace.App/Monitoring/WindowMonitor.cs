@@ -27,6 +27,8 @@ public sealed class WindowMonitor : IDisposable
     private nint _minimizeHook;
     private nint _objectFocusHook;
     private volatile bool _disposed;
+    private volatile bool _acceptEvents;
+    private int _generation;
 
     public WindowMonitor(QpcClock clock)
     {
@@ -49,6 +51,7 @@ public sealed class WindowMonitor : IDisposable
         if (IsRunning)
             return;
 
+        Interlocked.Increment(ref _generation);
         _foregroundHook = SetWinEventHook(
             EventSystemForeground,
             EventSystemForeground,
@@ -88,6 +91,8 @@ public sealed class WindowMonitor : IDisposable
 
         if (_objectFocusHook == nint.Zero)
             MonitorError?.Invoke($"Object-focus hook unavailable. Win32 error: {Marshal.GetLastWin32Error()}.");
+
+        _acceptEvents = true;
     }
 
     public WindowSnapshot? CaptureForeground()
@@ -101,11 +106,14 @@ public sealed class WindowMonitor : IDisposable
         if (processId == 0)
             return null;
 
-        return BuildSnapshot(new PendingWindowEvent(qpc, hwnd, processId, threadId, "ForegroundChanged", 0, 0));
+        return BuildSnapshot(new PendingWindowEvent(qpc, hwnd, processId, threadId, "ForegroundChanged", 0, 0, Volatile.Read(ref _generation)));
     }
 
     public void Stop()
     {
+        _acceptEvents = false;
+        Interlocked.Increment(ref _generation);
+
         if (_foregroundHook != nint.Zero)
         {
             UnhookWinEvent(_foregroundHook);
@@ -134,7 +142,7 @@ public sealed class WindowMonitor : IDisposable
         uint eventThread,
         uint eventTime)
     {
-        if (_disposed || hwnd == nint.Zero)
+        if (_disposed || !_acceptEvents || hwnd == nint.Zero)
             return;
 
         var windowEventType = eventType switch
@@ -155,7 +163,8 @@ public sealed class WindowMonitor : IDisposable
             if (processId == 0)
                 return;
 
-            _pendingEvents.Writer.TryWrite(new PendingWindowEvent(qpc, hwnd, processId, threadId, windowEventType, idObject, idChild));
+            var generation = Volatile.Read(ref _generation);
+            _pendingEvents.Writer.TryWrite(new PendingWindowEvent(qpc, hwnd, processId, threadId, windowEventType, idObject, idChild, generation));
         }
         catch (Exception ex)
         {
@@ -169,6 +178,9 @@ public sealed class WindowMonitor : IDisposable
         {
             try
             {
+                if (!_acceptEvents || pending.Generation != Volatile.Read(ref _generation))
+                    continue;
+
                 var snapshot = BuildSnapshot(pending);
                 if (snapshot is null)
                     continue;
@@ -248,7 +260,8 @@ public sealed class WindowMonitor : IDisposable
         uint ThreadId,
         string EventType,
         int ObjectId,
-        int ChildId);
+        int ChildId,
+        int Generation);
 
     private delegate void WinEventDelegate(
         nint hWinEventHook,
