@@ -35,6 +35,7 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
     private int _eventsLost = -1;
     private int _targetProcessId;
     private readonly ConcurrentDictionary<uint, uint> _threadProcessIds = new();
+    private readonly ConcurrentDictionary<uint, long> _targetThreadReadyQpc = new();
 
     public EtwRealtimeCollector(QpcClock clock, uint targetProcessId)
     {
@@ -50,6 +51,7 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
             throw new ArgumentOutOfRangeException(nameof(processId));
 
         Volatile.Write(ref _targetProcessId, checked((int)processId));
+        _targetThreadReadyQpc.Clear();
         foreach (var mapping in _threadProcessIds.Where(pair => pair.Value == processId))
             PublishTargetThreadDiscovered(mapping.Key, processId, "ExistingKernelThreadMap", _clock.GetTimestamp());
     }
@@ -250,6 +252,15 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
                 newIsTarget ? newThreadId :
                 threadIdValue >= 0 ? (uint?)threadIdValue : null;
 
+            var readyToRunDetail = "ReadyToRunMs=Unavailable";
+            if (newIsTarget && newThreadId is uint scheduledThreadId &&
+                _targetThreadReadyQpc.TryRemove(scheduledThreadId, out var readyQpc) &&
+                qpc >= readyQpc)
+            {
+                var readyToRunMs = (qpc - readyQpc) * 1000d / _clock.Frequency;
+                readyToRunDetail = $"ReadyToRunMs={readyToRunMs.ToString("F3", CultureInfo.InvariantCulture)}";
+            }
+
             var details = string.Join(";",
                 "TimestampQuality=ETWQPC",
                 $"TargetThreadRole={targetRole}",
@@ -263,7 +274,8 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
                 FormatPayloadValue(payload, "OldThreadState"),
                 FormatPayloadValue(payload, "OldThreadWaitReason"),
                 FormatPayloadValue(payload, "OldThreadWaitMode"),
-                FormatPayloadValue(payload, "NewThreadWaitTime"));
+                FormatPayloadValue(payload, "NewThreadWaitTime"),
+                readyToRunDetail);
 
             EventReceived?.Invoke(new DiagnosticEvent(
                 Guid.NewGuid(),
@@ -289,27 +301,57 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
     private bool TryHandleThreadLifecycleEvent(TraceEvent data, long qpc)
     {
         var taskName = data.TaskName ?? string.Empty;
-        if (!taskName.Equals("Thread", StringComparison.OrdinalIgnoreCase))
+        var opcode = data.OpcodeName ?? string.Empty;
+        var eventName = data.EventName ?? string.Empty;
+        var isReadyThread = opcode.Equals("ReadyThread", StringComparison.OrdinalIgnoreCase) ||
+            eventName.Contains("ReadyThread", StringComparison.OrdinalIgnoreCase);
+        if (!taskName.Equals("Thread", StringComparison.OrdinalIgnoreCase) && !isReadyThread)
             return false;
 
-        var opcode = data.OpcodeName ?? string.Empty;
         var payload = ReadPayload(data);
-        var threadId = GetPayloadUInt32(payload, "ThreadId", "TThreadId");
-        var processId = GetPayloadUInt32(payload, "ProcessId");
+        if (isReadyThread)
+        {
+            var readyThreadId = GetPayloadUInt32(payload, "TThreadId", "ThreadId");
+            if (readyThreadId is uint threadId &&
+                _threadProcessIds.TryGetValue(threadId, out var readyProcessId) &&
+                readyProcessId == TargetProcessId)
+            {
+                _targetThreadReadyQpc[threadId] = qpc;
+                EventReceived?.Invoke(new DiagnosticEvent(
+                    Guid.NewGuid(),
+                    "TargetThreadReady",
+                    "NT Kernel Logger",
+                    qpc,
+                    _clock.Frequency,
+                    _clock.ToUtc(qpc),
+                    _clock.ElapsedMilliseconds(_clock.AnchorTimestamp, qpc),
+                    readyProcessId,
+                    threadId,
+                    null,
+                    null,
+                    null,
+                    $"TimestampQuality=ETWQPC;ReadyThreadId={threadId};{FormatPayloadValue(payload, "AdjustReason")};{FormatPayloadValue(payload, "AdjustIncrement")};{FormatPayloadValue(payload, "Flag")}"));
+            }
 
-        if (threadId is null)
+            return true;
+        }
+
+        var lifecycleThreadId = GetPayloadUInt32(payload, "ThreadId", "TThreadId");
+        var processId = GetPayloadUInt32(payload, "ProcessId");
+        if (lifecycleThreadId is null)
             return true;
 
         if (opcode.Equals("Start", StringComparison.OrdinalIgnoreCase) ||
             opcode.Equals("DCStart", StringComparison.OrdinalIgnoreCase))
         {
             if (processId is uint pid)
-                RegisterThreadMapping(threadId.Value, pid, "KernelThread" + opcode, qpc);
+                RegisterThreadMapping(lifecycleThreadId.Value, pid, "KernelThread" + opcode, qpc);
         }
         else if (opcode.Equals("End", StringComparison.OrdinalIgnoreCase) ||
                  opcode.Equals("DCEnd", StringComparison.OrdinalIgnoreCase))
         {
-            _threadProcessIds.TryRemove(threadId.Value, out _);
+            _threadProcessIds.TryRemove(lifecycleThreadId.Value, out _);
+            _targetThreadReadyQpc.TryRemove(lifecycleThreadId.Value, out _);
         }
 
         return true;
