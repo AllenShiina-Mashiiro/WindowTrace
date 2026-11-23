@@ -299,7 +299,7 @@ public sealed class DiagnosticSessionManager
                 RelativeMilliseconds = _clock.ElapsedMilliseconds(initialization.FocusLostQpc, priorEvent.QpcTimestamp),
                 CapturePhase = "PreRoll"
             };
-            if (initialization.Writer.TryWrite(tagged))
+            if (await initialization.Writer.WriteAsync(tagged))
                 queued++;
             else
                 rejected++;
