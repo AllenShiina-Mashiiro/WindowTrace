@@ -151,7 +151,7 @@ public partial class MainWindow : Window
             }
             else
             {
-                FooterText.Text = "Window monitor active. Select the game process to enable target-scoped CPU/GPU and ETW diagnostics.";
+                FooterText.Text = "Window monitor active. Select the game process to enable target-process CPU/GPU sampling and system-wide ETW diagnostics.";
             }
         }
         catch (Exception ex)
