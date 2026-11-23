@@ -48,6 +48,10 @@ public sealed class PresentMonProcess : IAsyncDisposable
         startInfo.ArgumentList.Add("--qpc_time");
         startInfo.ArgumentList.Add("--no_console_stats");
         startInfo.ArgumentList.Add("--no_track_input");
+        startInfo.ArgumentList.Add("--v2_metrics");
+        startInfo.ArgumentList.Add("--session_name");
+        startInfo.ArgumentList.Add($"WindowTrace-{Environment.ProcessId}");
+        startInfo.ArgumentList.Add("--terminate_on_proc_exit");
 
         var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
         process.OutputDataReceived += OnOutput;
@@ -80,7 +84,9 @@ public sealed class PresentMonProcess : IAsyncDisposable
         if (_headers is null)
         {
             var candidate = ParseCsv(line);
-            if (candidate.Length > 1 && candidate.Any(h => h.Contains("Time", StringComparison.OrdinalIgnoreCase)))
+            if (candidate.Length > 1 && candidate.Any(h =>
+                    h.Contains("CPUStart", StringComparison.OrdinalIgnoreCase) ||
+                    h.Equals("Application", StringComparison.OrdinalIgnoreCase)))
             {
                 _headers = candidate;
                 StatusChanged?.Invoke($"PresentMon CSV stream detected ({candidate.Length} columns).");
@@ -137,7 +143,7 @@ public sealed class PresentMonProcess : IAsyncDisposable
         IReadOnlyDictionary<string, string> fields,
         out long qpc)
     {
-        foreach (var key in new[] { "CPUStartTime", "CPUStartTimeQPC", "CPUStartTimeQpc" })
+        foreach (var key in new[] { "CPUStartQPC", "CPUStartTime", "CPUStartTimeQPC", "CPUStartTimeQpc" })
         {
             if (fields.TryGetValue(key, out var value) &&
                 long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out qpc) &&
