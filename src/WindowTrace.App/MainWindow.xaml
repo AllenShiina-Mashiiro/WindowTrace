@@ -71,7 +71,7 @@
                               IsChecked="False" Checked="InputMarkerCheckBox_Checked"
                               Unchecked="InputMarkerCheckBox_Unchecked" Margin="0,0,12,4" />
                 </WrapPanel>
-                <TextBlock Text="Workflow: 1) Select the game window. 2) Start monitoring. 3) Switch to the game, wait at least 3 seconds, Alt+Tab to another app, then return to the game. WindowTrace captures the focus-loss/focus-return cycle automatically. PresentMon 2.x is optional. The Ctrl+Alt+F12 marker is optional, consumed by WindowTrace, and records timestamps only—not key contents."
+                <TextBlock Text="Workflow: 1) Select the game window. 2) Start monitoring. 3) Wait until the status says Ready to reproduce (the app fills the 3-second pre-capture buffer automatically). 4) Alt+Tab away and return to the game. After return, capture ends as soon as CPU and GPU samples are available after at least 1.5 seconds; hard maximum is 3 seconds. Missing collector data is reported as unavailable, not zero. PresentMon 2.x is optional. The Ctrl+Alt+F12 marker is optional, consumed by WindowTrace, and records timestamps only—not key contents."
                            Foreground="#64748B" FontSize="11" TextWrapping="Wrap" />
             </StackPanel>
         </Border>
