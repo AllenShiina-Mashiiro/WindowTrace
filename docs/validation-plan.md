@@ -62,7 +62,8 @@ Inspect QPC values, not only wall-clock display strings.
 - Verify target-thread discovery events include the selected game's GUI thread and any additional game threads reported by kernel ThreadStart/DCStart rundown.
 - Confirm context-switch records identify OldThreadId/NewThreadId, their mapped PIDs, target switch direction, OldThreadState, OldThreadWaitReason and NewThreadWaitTime.
 - Treat missing thread-to-process mappings as unknown; do not count system-wide context switches as game-thread scheduling evidence.
-- In the 1.5-second post-focus interval, compare system-wide DPC, ISR and ReadyThread event counts with target-thread switch-in/out events. Do not attribute system-wide DPC/ISR counts to the game without further evidence.
+- In the 1.5-second post-focus interval, compare system-wide DPC/ISR counts with target-thread ReadyThread and switch-in/out events.
+- Verify a target thread's ReadyThread QPC timestamp is paired with its next switch-in to produce a ready-to-running interval. This measures scheduler delay after a thread is readied, not keyboard input delivery.
 
 ### CPU
 - Compare process CPU percentage with Task Manager over a sustained interval.
