@@ -18,6 +18,7 @@ public partial class MainWindow : Window
     private long _monitorStartQpc;
     private bool _isMonitoring;
     private bool _isClosing;
+    private long _totalEvents;
 
     public ObservableCollection<WindowRow> Events { get; } = new();
 
@@ -37,22 +38,27 @@ public partial class MainWindow : Window
             $"QPC frequency: {_clock.Frequency:N0} ticks/sec";
     }
 
-    private void StartButton_Click(object sender, RoutedEventArgs e)
+    private async void StartButton_Click(object sender, RoutedEventArgs e)
     {
         if (_isMonitoring)
             return;
 
         try
         {
-            var sessionId = DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss");
+            var sessionId = Guid.NewGuid();
+            var startedUtc = DateTimeOffset.UtcNow;
             var directory = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "WindowTrace",
                 "Sessions");
 
-            var path = Path.Combine(directory, $"windowtrace-{sessionId}.jsonl");
-            _writer = new JsonlEventWriter(path);
+            Directory.CreateDirectory(directory);
+            var fileStamp = startedUtc.ToString("yyyyMMdd-HHmmss-fff");
+            var path = Path.Combine(directory, $"windowtrace-{fileStamp}.jsonl");
+            var metadataPath = Path.Combine(directory, $"windowtrace-{fileStamp}.session.json");
             _monitorStartQpc = _clock.GetTimestamp();
+            await SessionMetadata.WriteAsync(metadataPath, sessionId, startedUtc, _clock.Frequency);
+            _writer = new JsonlEventWriter(path);
 
             _windowMonitor.Start();
             _isMonitoring = true;
@@ -67,7 +73,10 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             _isMonitoring = false;
+            var failedWriter = _writer;
             _writer = null;
+            if (failedWriter is not null)
+                _ = failedWriter.DisposeAsync();
             StartButton.IsEnabled = true;
             StopButton.IsEnabled = false;
             StatusText.Text = "Unable to start monitoring";
@@ -156,7 +165,7 @@ public partial class MainWindow : Window
         while (Events.Count > UiEventLimit)
             Events.RemoveAt(Events.Count - 1);
 
-        EventCountText.Text = _history.Snapshot().Count.ToString();
+        EventCountText.Text = Interlocked.Increment(ref _totalEvents).ToString();
     }
 
     private async Task StopMonitoringAsync()
