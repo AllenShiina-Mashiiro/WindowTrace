@@ -860,6 +860,9 @@ public partial class MainWindow : Window
 
     private async void SessionTimer_Tick(object? sender, EventArgs e)
     {
+        if (_etwCollector is not null)
+            _sessions.SetEtwTimestampFallbackCount(_etwCollector.TimestampFallbackCount);
+
         await _sessions.CheckPostCaptureDeadlineAsync();
         UpdateCaptureReadinessStatus();
 
