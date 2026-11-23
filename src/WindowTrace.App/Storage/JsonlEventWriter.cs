@@ -129,6 +129,50 @@ public sealed class JsonlEventWriter : IAsyncDisposable
         return true;
     }
 
+    /// <summary>
+    /// Back-pressured enqueue for background replay work such as pre-roll.
+    /// Unlike TryWrite, this waits for queue capacity instead of discarding the
+    /// record when the bounded queue is temporarily full.
+    /// </summary>
+    public async ValueTask<bool> WriteAsync(
+        DiagnosticEvent item,
+        CancellationToken cancellationToken = default)
+    {
+        if (_lastError is not null)
+        {
+            Interlocked.Increment(ref _writerErrorDroppedRecords);
+            return false;
+        }
+
+        var isPriority = IsPriorityRecord(item);
+        if (TotalFileLimitReached)
+        {
+            Interlocked.Increment(ref _fileLimitDroppedRecords);
+            Interlocked.Increment(ref _hardFileLimitDroppedRecords);
+            return false;
+        }
+
+        if (!isPriority && RegularFileBudgetReached)
+        {
+            Interlocked.Increment(ref _fileLimitDroppedRecords);
+            Interlocked.Increment(ref _regularBudgetDroppedRecords);
+            return false;
+        }
+
+        var channel = isPriority ? _priorityChannel : _normalChannel;
+        try
+        {
+            await channel.Writer.WriteAsync(item, cancellationToken).ConfigureAwait(false);
+            _signal.Release();
+            return true;
+        }
+        catch (ChannelClosedException)
+        {
+            Interlocked.Increment(ref _writerErrorDroppedRecords);
+            return false;
+        }
+    }
+
     private static bool IsPriorityRecord(DiagnosticEvent item)
         => item.EventType is
             "DiagnosticSessionStarted" or
@@ -232,6 +276,8 @@ public sealed class JsonlEventWriter : IAsyncDisposable
         catch (Exception ex)
         {
             _lastError = ex;
+            _priorityChannel.Writer.TryComplete(ex);
+            _normalChannel.Writer.TryComplete(ex);
             while (_priorityChannel.Reader.TryRead(out _))
                 Interlocked.Increment(ref _writerErrorDroppedRecords);
             while (_normalChannel.Reader.TryRead(out _))
