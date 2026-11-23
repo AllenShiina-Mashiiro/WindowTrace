@@ -172,6 +172,7 @@ public partial class MainWindow : Window
             if (_sessions.TargetProcessId is uint targetPid)
             {
                 EnsureEtwCollectorStarted();
+                RegisterTargetProcessThreads(targetPid);
                 if (initialForeground is not null)
                     RegisterTargetWindowThread(initialForeground);
                 await StartTargetCollectorsAsync(targetPid);
@@ -309,6 +310,7 @@ public partial class MainWindow : Window
             if (_isMonitoring)
             {
                 EnsureEtwCollectorStarted();
+                RegisterTargetProcessThreads(snapshot.ProcessId);
                 RegisterTargetWindowThread(snapshot);
                 await StartTargetCollectorsAsync(snapshot.ProcessId);
 
@@ -481,6 +483,23 @@ public partial class MainWindow : Window
         {
             _ = collector.DisposeAsync();
             OnCollectorWarning($"PresentMon could not start: {ex.Message}");
+        }
+    }
+
+    private void RegisterTargetProcessThreads(uint processId)
+    {
+        if (_etwCollector is null || _sessions.TargetProcessId != processId)
+            return;
+
+        try
+        {
+            using var process = Process.GetProcessById(checked((int)processId));
+            foreach (ProcessThread thread in process.Threads)
+                _etwCollector.RegisterTargetProcessThread(processId, checked((uint)thread.Id));
+        }
+        catch (Exception ex)
+        {
+            OnCollectorWarning($"Target process thread enumeration unavailable: {ex.Message}");
         }
     }
 
