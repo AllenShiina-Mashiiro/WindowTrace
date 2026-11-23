@@ -253,6 +253,9 @@ public static class SessionReportGenerator
         var warnings = collectorEvents.Count(item => item.QpcTimestamp >= focusGained.QpcTimestamp && item.QpcTimestamp <= endQpc);
         var win32kEvents = etwEvents.Where(item => item.QpcTimestamp >= focusGained.QpcTimestamp && item.QpcTimestamp <= endQpc &&
             item.Source.Contains("Win32k", StringComparison.OrdinalIgnoreCase)).ToArray();
+        var systemDpcEvents = etwEvents.Count(item => item.EventType.Contains("DPC", StringComparison.OrdinalIgnoreCase));
+        var systemIsrEvents = etwEvents.Count(item => item.EventType.Contains("ISR", StringComparison.OrdinalIgnoreCase));
+        var systemReadyThreadEvents = etwEvents.Count(item => item.EventType.Contains("ReadyThread", StringComparison.OrdinalIgnoreCase));
         var targetContextSwitches = etwEvents.Where(item => item.EventType == "TargetThreadContextSwitch" &&
             item.ProcessId == focusGained.ProcessId &&
             item.QpcTimestamp >= focusGained.QpcTimestamp && item.QpcTimestamp <= endQpc).ToArray();
@@ -281,6 +284,9 @@ public static class SessionReportGenerator
         report.AppendLine($"- First target CPU sample: {FormatOffset(cpu, focusGained)}; {(cpu is null ? "no CPU sample was recorded in this interval" : Truncate(cpu.Details ?? "No details", 220))}");
         report.AppendLine($"- First GPU sample: {FormatOffset(gpu, focusGained)}; {(gpu is null ? "no GPU sample was recorded in this interval" : Truncate(gpu.Details ?? "No details", 220))}");
         report.AppendLine($"- Win32k ETW events in interval: {win32kEvents.Length}");
+        report.AppendLine($"- System-wide DPC events in interval: {systemDpcEvents}");
+        report.AppendLine($"- System-wide ISR events in interval: {systemIsrEvents}");
+        report.AppendLine($"- System-wide ReadyThread events in interval: {systemReadyThreadEvents}");
         report.AppendLine($"- Target threads mapped during the session: {targetThreadDiscoveryCount}");
         report.AppendLine($"- Target-thread context switches in interval: {targetContextSwitches.Length} (incoming: {incomingSwitches}; outgoing: {outgoingSwitches})");
         report.AppendLine($"- Target-thread incoming NewThreadWaitTime raw values: {(incomingWaitValues.Length == 0 ? "Unavailable" : string.Join(", ", incomingWaitValues))}");
