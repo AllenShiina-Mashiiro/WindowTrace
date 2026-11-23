@@ -60,7 +60,11 @@ public sealed class CoreTests
                     "TestGame", null, "Target regained foreground.", sessionId),
                 new DiagnosticEvent(Guid.NewGuid(), "RenderingSummary", "PresentMonMetrics",
                     qpc + clock.Frequency, clock.Frequency, clock.ToUtc(qpc + clock.Frequency), 1000,
-                    4242, null, null, "TestGame", null, "FPS=60.00;FrameTimeVarianceMs2=0.1000", sessionId)
+                    4242, null, null, "TestGame", null, "FPS=60.00;FrameTimeVarianceMs2=0.1000", sessionId),
+                new DiagnosticEvent(Guid.NewGuid(), "ThreadContextSwitch", "NT Kernel Logger",
+                    qpc + (long)(clock.Frequency * 1.5d), clock.Frequency,
+                    clock.ToUtc(qpc + (long)(clock.Frequency * 1.5d)), 1500,
+                    4242, 88, null, "TestGame", null, "OldThreadState=Waiting;NewThreadId=88", sessionId)
             };
             await File.WriteAllLinesAsync(jsonlPath, events.Select(item => System.Text.Json.JsonSerializer.Serialize(item)));
 
@@ -88,6 +92,8 @@ public sealed class CoreTests
             Assert.Contains("Rendering summaries", report);
             Assert.Contains("Latest 1.5-second window after focus regained", report);
             Assert.Contains("FPS=60.00", report);
+            Assert.Contains("ThreadContextSwitch", report);
+            Assert.Contains("NT Kernel Logger", report);
             Assert.Contains("ETW events lost", report);
             Assert.Contains("does not establish causation", report);
         }
