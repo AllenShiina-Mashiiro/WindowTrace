@@ -9,7 +9,7 @@ It is designed to collect timestamped observations across window focus, CPU sche
 - Layered C# / .NET 10 WPF application.
 - ETW real-time collection through Microsoft.Diagnostics.Tracing.TraceEvent.
 - PresentMon launched as a separate process.
-- QPC timestamps as the primary event clock, with UTC mapping.
+- QPC timestamps as the primary event clock, anchored to `GetSystemTimePreciseAsFileTime` for UTC conversion.
 - Focus-triggered diagnostic sessions with a 3-second pre-roll and 5-second post-focus capture.
 - Bounded in-memory history and a per-session JSONL size limit.
 - JSONL as the authoritative event stream; CSV as a flattened export.
