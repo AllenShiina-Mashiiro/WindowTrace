@@ -172,7 +172,7 @@ public sealed class DiagnosticSessionManager
 
                 if (_writer is null && wasTargetForeground && !isTargetForeground)
                 {
-                    StartSessionLocked(item.QpcTimestamp);
+                    StartSessionLocked(item);
                     status = $"Focus lost by target {_targetProcessName} (PID {targetPid}); diagnostic capture started.";
                 }
                 else if (_writer is not null)
@@ -189,7 +189,7 @@ public sealed class DiagnosticSessionManager
                         _postFocusFrameSampleSeen = false;
                         State = DiagnosticSessionState.FocusGainedPostCapture;
                         WriteSessionMarkerLocked("FocusGained", item.QpcTimestamp,
-                            "Target regained foreground. Adaptive post-focus capture: minimum 1500 ms; finish early after CPU and GPU samples arrive; maximum 3000 ms.");
+                            $"Target regained foreground. Adaptive post-focus capture: minimum 1500 ms; maximum 3000 ms;{GetWindowTimestampDetails(item)}");
                         status = "Game returned. Capturing the critical 1.5-second response window; will finish as soon as CPU and GPU samples are available (maximum 3 seconds).";
                     }
                     else if (!isTargetForeground && State == DiagnosticSessionState.FocusGainedPostCapture)
@@ -201,7 +201,8 @@ public sealed class DiagnosticSessionManager
                         _postFocusGpuSampleSeen = false;
                         _postFocusFrameSampleSeen = false;
                         State = DiagnosticSessionState.Background;
-                        WriteSessionMarkerLocked("FocusLostAgain", item.QpcTimestamp, "Target left foreground again before post-capture completed.");
+                        WriteSessionMarkerLocked("FocusLostAgain", item.QpcTimestamp,
+                            $"Target left foreground again before post-capture completed;{GetWindowTimestampDetails(item)}");
                         status = "Target left foreground again during post-capture; session remains active.";
                     }
                     else if (!isTargetForeground)
@@ -223,8 +224,10 @@ public sealed class DiagnosticSessionManager
             StatusChanged?.Invoke(status);
     }
 
-    private void StartSessionLocked(long focusLostQpc)
+    private void StartSessionLocked(DiagnosticEvent focusLostEvent)
     {
+        var focusLostQpc = focusLostEvent.QpcTimestamp;
+        var triggerTimestampDetails = GetWindowTimestampDetails(focusLostEvent);
         var sessionId = Guid.NewGuid();
         var startedUtc = _clock.ToUtc(focusLostQpc);
         var stamp = startedUtc.ToString("yyyyMMdd-HHmmss-fff");
@@ -264,10 +267,11 @@ public sealed class DiagnosticSessionManager
             null,
             _targetProcessName,
             null,
-            "PreRollInitialization=Pending;RequestedPreRollMs=3000",
+            $"PreRollInitialization=Pending;RequestedPreRollMs=3000;{triggerTimestampDetails}",
             _sessionId);
         writer.TryWrite(marker);
-        WriteSessionMarkerLocked("FocusLost", focusLostQpc, "Selected target process lost foreground.");
+        WriteSessionMarkerLocked("FocusLost", focusLostQpc,
+            $"Selected target process lost foreground;{triggerTimestampDetails}");
 
         var initialization = new SessionInitialization(
             writer, metadataPath, sessionId, startedUtc, focusLostQpc,
@@ -335,10 +339,32 @@ public sealed class DiagnosticSessionManager
             qpcQuality, _clock.Frequency, _clock.ToUtc(qpcQuality),
             _clock.ElapsedMilliseconds(initialization.FocusLostQpc, qpcQuality),
             initialization.TargetProcessId, null, null, initialization.TargetProcessName, null,
-            qualityDetails, initialization.SessionId));
+            qualityDetails + ";TimestampQuality=WindowTraceReceiptQPC", initialization.SessionId));
 
         return new PreRollInitializationResult(
             actualPreRollMs, preRollEvents.Length, queued, rejected, evictionsAtStart);
+    }
+
+    private static string GetWindowTimestampDetails(DiagnosticEvent item)
+    {
+        var timestampQuality = GetDetailValue(item.Details, "TimestampQuality") ?? "Unavailable";
+        var winEventTime = GetDetailValue(item.Details, "WinEventSystemTimeMs") ?? "Unavailable";
+        return $"TriggerTimestampQuality={timestampQuality};WinEventSystemTimeMs={winEventTime}";
+    }
+
+    private static string? GetDetailValue(string? details, string key)
+    {
+        if (string.IsNullOrWhiteSpace(details))
+            return null;
+
+        foreach (var part in details.Split(';'))
+        {
+            var separator = part.IndexOf('=');
+            if (separator > 0 && part[..separator].Equals(key, StringComparison.OrdinalIgnoreCase))
+                return part[(separator + 1)..];
+        }
+
+        return null;
     }
 
     private void WriteSessionMarkerLocked(string eventType, long qpc, string details)
@@ -405,7 +431,7 @@ public sealed class DiagnosticSessionManager
                 completionQpc, _clock.Frequency, _clock.ToUtc(completionQpc),
                 _clock.ElapsedMilliseconds(_sessionStartQpc, completionQpc),
                 _targetProcessId, null, null, _targetProcessName, null,
-                $"CompletionReason={completionReason};PostFocusCpuSampleSeen={_postFocusCpuSampleSeen};PostFocusGpuSampleSeen={_postFocusGpuSampleSeen};PostFocusFrameSampleSeen={_postFocusFrameSampleSeen};MinimumCaptureMs=1500;MaximumCaptureMs=3000;WriterDropsBeforeFinalize={completedWriter.DroppedRecords}",
+                $"CompletionReason={completionReason};TimestampQuality=WindowTraceTimerReceiptQPC;PostFocusCpuSampleSeen={_postFocusCpuSampleSeen};PostFocusGpuSampleSeen={_postFocusGpuSampleSeen};PostFocusFrameSampleSeen={_postFocusFrameSampleSeen};MinimumCaptureMs=1500;MaximumCaptureMs=3000;WriterDropsBeforeFinalize={completedWriter.DroppedRecords}",
                 _sessionId));
             LastCompletedSessionPath = completedWriter.FilePath;
             _writer = null;
@@ -455,7 +481,7 @@ public sealed class DiagnosticSessionManager
                     stopQpc, _clock.Frequency, _clock.ToUtc(stopQpc),
                     _clock.ElapsedMilliseconds(_sessionStartQpc, stopQpc),
                     _targetProcessId, null, null, _targetProcessName, null,
-                    $"CompletionReason=MonitoringStopped;WriterDropsBeforeFinalize={writer.DroppedRecords}",
+                    $"CompletionReason=MonitoringStopped;TimestampQuality=WindowTraceStopRequestQPC;WriterDropsBeforeFinalize={writer.DroppedRecords}",
                     _sessionId));
                 LastCompletedSessionPath = writer.FilePath;
             }
