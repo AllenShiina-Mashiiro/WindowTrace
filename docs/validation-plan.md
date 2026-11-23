@@ -97,3 +97,8 @@ Inspect QPC values, not only wall-clock display strings.
 ## Diagnostic interpretation
 
 Do not claim a root cause from a single spike, warning, FPS drop or correlation. A useful report should identify the first measurable point where timing diverges, distinguish input marker time from game input handling, and show whether CPU scheduling, GPU execution, presentation or window/focus events changed around the same QPC interval.
+
+
+## Manual input-response marker test
+
+When the marker is enabled, press Ctrl+Alt+F12 immediately before the test key, then press Ctrl+Alt+F12 again as soon as the game visibly responds. Each pair is reported as a marker-to-response interval. This is an approximate user-observed interval that includes human timing, not an exact measurement of keyboard hardware or game input-processing latency. The registered chord is consumed and is not sent to the game.
