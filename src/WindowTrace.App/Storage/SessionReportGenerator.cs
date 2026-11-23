@@ -26,6 +26,7 @@ public static class SessionReportGenerator
         var gpuEvents = new List<DiagnosticEvent>();
         var markerEvents = new List<DiagnosticEvent>();
         var postFocusEtwEvents = new List<DiagnosticEvent>();
+        var recentEtwEvents = new Queue<DiagnosticEvent>();
         var postFocusEtwTruncated = 0;
         long? latestFocusGainedQpc = null;
         long latestFocusGainedEndQpc = 0;
@@ -66,22 +67,34 @@ public static class SessionReportGenerator
                 AddRecent(gpuEvents, item, item.EventType == "GpuPdhSample");
                 AddRecent(markerEvents, item, item.EventType is "InputTestMarker" or "TargetSelected" or "PresentMonCapability" or "EtwProviderCapability");
 
+                if (IsEtwSource(item.Source))
+                {
+                    recentEtwEvents.Enqueue(item);
+                    while (recentEtwEvents.Count > 5000)
+                        recentEtwEvents.Dequeue();
+                }
+
                 if (item.EventType == "FocusGained")
                 {
                     latestFocusGainedQpc = item.QpcTimestamp;
                     latestFocusGainedEndQpc = item.QpcTimestamp + (long)(item.QpcFrequency * 1.5d);
                     postFocusEtwEvents.Clear();
                     postFocusEtwTruncated = 0;
+
+                    foreach (var recentEvent in recentEtwEvents
+                        .Where(candidate => candidate.QpcTimestamp >= item.QpcTimestamp &&
+                            candidate.QpcTimestamp <= latestFocusGainedEndQpc)
+                        .OrderBy(candidate => candidate.QpcTimestamp))
+                    {
+                        AddPostFocusEtw(postFocusEtwEvents, recentEvent, ref postFocusEtwTruncated);
+                    }
                 }
                 else if (latestFocusGainedQpc is long focusQpc &&
                     item.QpcTimestamp >= focusQpc &&
                     item.QpcTimestamp <= latestFocusGainedEndQpc &&
                     IsEtwSource(item.Source))
                 {
-                    if (postFocusEtwEvents.Count < MaximumPostFocusEtwRows)
-                        postFocusEtwEvents.Add(item);
-                    else
-                        postFocusEtwTruncated++;
+                    AddPostFocusEtw(postFocusEtwEvents, item, ref postFocusEtwTruncated);
                 }
 
                 if (item.Source is not ("WindowTrace" or "PresentMonProcess" or "PresentMonMetrics" or "WinEvent" or "WindowPoll" or "PDH" or "ETW" or "GetSystemTimes+Process.TotalProcessorTime"))
@@ -263,6 +276,14 @@ public static class SessionReportGenerator
         if (etwEventsTruncated > 0)
             report.AppendLine($"ETW event detail limit reached: {etwEventsTruncated} additional events in this interval are not listed. The complete JSONL stream remains available.");
         report.AppendLine();
+    }
+
+    private static void AddPostFocusEtw(List<DiagnosticEvent> events, DiagnosticEvent item, ref int truncated)
+    {
+        if (events.Count < MaximumPostFocusEtwRows)
+            events.Add(item);
+        else
+            truncated++;
     }
 
     private static bool IsEtwSource(string source)
