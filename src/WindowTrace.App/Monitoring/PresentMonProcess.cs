@@ -139,7 +139,7 @@ public sealed class PresentMonProcess : IAsyncDisposable
                 null,
                 details));
 
-            var summary = _metrics.AddFrame(eventQpc, fields);
+            var summary = _metrics.AddFrame(eventQpc, fields, timestampQuality == "PresentMonQpc");
             if (summary is not null)
                 RenderingSummaryReceived?.Invoke(summary);
         }
