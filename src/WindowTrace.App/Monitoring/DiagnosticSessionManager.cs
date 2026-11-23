@@ -141,8 +141,9 @@ public sealed class DiagnosticSessionManager
             _buffer.Add(item);
             if (_writer is not null)
             {
-                _writer.TryWrite(ForActiveSession(item));
-                if (State == DiagnosticSessionState.FocusGainedPostCapture &&
+                var accepted = _writer.TryWrite(ForActiveSession(item));
+                if (accepted &&
+                    State == DiagnosticSessionState.FocusGainedPostCapture &&
                     _postCaptureStartedQpc is long focusQpc &&
                     item.QpcTimestamp >= focusQpc)
                 {
