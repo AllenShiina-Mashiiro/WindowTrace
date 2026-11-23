@@ -805,15 +805,25 @@ public partial class MainWindow : Window
         _isClosing = true;
 
         _targetPickTimer.Stop();
-        await StopMonitoringAsync();
-        var handle = new WindowInteropHelper(this).Handle;
-        if (handle != IntPtr.Zero)
-            UnregisterHotKey(handle, InputMarkerHotKeyId);
-        _windowSource?.RemoveHook(WindowProc);
-        _windowMonitor.Dispose();
+        try
+        {
+            await StopMonitoringAsync();
+        }
+        catch (Exception ex)
+        {
+            FooterText.Text = $"Shutdown warning: {ex.Message}";
+        }
+        finally
+        {
+            var handle = new WindowInteropHelper(this).Handle;
+            if (handle != IntPtr.Zero)
+                UnregisterHotKey(handle, InputMarkerHotKeyId);
+            _windowSource?.RemoveHook(WindowProc);
+            _windowMonitor.Dispose();
 
-        Closing -= Window_Closing;
-        Close();
+            Closing -= Window_Closing;
+            Close();
+        }
     }
 
     [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
