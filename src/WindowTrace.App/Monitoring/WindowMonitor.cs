@@ -21,7 +21,7 @@ public sealed class WindowMonitor : IDisposable
     private readonly Channel<PendingWindowEvent> _pendingEvents;
     private readonly Task _worker;
     private nint _hook;
-    private bool _disposed;
+    private volatile bool _disposed;
 
     public WindowMonitor(QpcClock clock)
     {
