@@ -103,6 +103,10 @@ public sealed class CoreTests
                     qpc + (long)(clock.Frequency * 1.2d), clock.Frequency,
                     clock.ToUtc(qpc + (long)(clock.Frequency * 1.2d)), 1200,
                     0, 0, null, null, null, "ISR metadata only", sessionId),
+                new DiagnosticEvent(Guid.NewGuid(), "Etw:VSyncDPC", "Microsoft-Windows-DxgKrnl",
+                    qpc + (long)(clock.Frequency * 1.25d), clock.Frequency,
+                    clock.ToUtc(qpc + (long)(clock.Frequency * 1.25d)), 1250,
+                    4, 0, null, null, null, "GPU VSync DPC metadata only", sessionId),
                 new DiagnosticEvent(Guid.NewGuid(), "Etw:ReadyThread", "NT Kernel Logger",
                     qpc + (long)(clock.Frequency * 1.3d), clock.Frequency,
                     clock.ToUtc(qpc + (long)(clock.Frequency * 1.3d)), 1300,
@@ -152,8 +156,9 @@ public sealed class CoreTests
             Assert.Contains("Latest 1.5-second window after focus regained", report);
             Assert.Contains("Post-focus evidence summary", report);
             Assert.Contains("Win32k ETW events in interval", report);
-            Assert.Contains("System-wide DPC events in interval: 1", report);
-            Assert.Contains("System-wide ISR events in interval: 1", report);
+            Assert.Contains("System-wide DPC events in interval (NT Kernel Logger): 1", report);
+            Assert.Contains("System-wide ISR events in interval (NT Kernel Logger): 1", report);
+            Assert.Contains("GPU VSync DPC events in interval (DxgKrnl): 1", report);
             Assert.Contains("Target-thread ReadyThread events in interval: 1", report);
             Assert.Contains("ready-to-running delay from QPC (ms): n=1; avg=300.000; max=300.000", report);
             Assert.Contains("Target threads mapped during the session: 1", report);
