@@ -254,7 +254,7 @@ public sealed class DiagnosticSessionManager
             RelativeMilliseconds = _clock.ElapsedMilliseconds(_sessionStartQpc, item.QpcTimestamp)
         };
 
-    public async Task CheckPostCaptureDeadlineAsync()
+    public async Task CheckPostCaptureDeadlineAsync(long? currentQpc = null)
     {
         JsonlEventWriter? completedWriter = null;
         SessionContext? context = null;
@@ -264,12 +264,13 @@ public sealed class DiagnosticSessionManager
             if (_writer is null || _postCaptureDeadlineQpc is not long deadline)
                 return;
 
-            if (_clock.GetTimestamp() < deadline)
+            var nowQpc = currentQpc ?? _clock.GetTimestamp();
+            if (nowQpc < deadline)
                 return;
 
             completedWriter = _writer;
             context = CaptureSessionContextLocked();
-            completionQpc = _clock.GetTimestamp();
+            completionQpc = nowQpc;
             completedWriter.TryWrite(new DiagnosticEvent(
                 Guid.NewGuid(), "DiagnosticSessionCompleted", "WindowTrace",
                 completionQpc, _clock.Frequency, _clock.ToUtc(completionQpc),
