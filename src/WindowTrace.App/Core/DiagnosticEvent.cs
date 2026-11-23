@@ -24,4 +24,5 @@ public sealed record WindowSnapshot(
     uint ThreadId,
     string ProcessName,
     string WindowTitle,
-    bool IsMinimized);
+    bool IsMinimized,
+    string EventType = "ForegroundChanged");
