@@ -530,11 +530,14 @@ public sealed class DiagnosticSessionManager
             writer.DroppedRecords,
             writer.BytesWritten,
             writer.MaxBytes,
-            writer.LimitReached,
+            writer.TotalFileLimitReached,
             writer.LastError?.ToString())
         {
             QueueOverflowDroppedRecords = writer.QueueOverflowDroppedRecords,
             PriorityQueueOverflowDroppedRecords = writer.PriorityQueueOverflowDroppedRecords,
+            RegularBudgetDroppedRecords = writer.RegularBudgetDroppedRecords,
+            HardFileLimitDroppedRecords = writer.HardFileLimitDroppedRecords,
+            RegularFileBudgetReached = writer.RegularFileBudgetReached,
             FileLimitDroppedRecords = writer.FileLimitDroppedRecords,
             WriterErrorDroppedRecords = writer.WriterErrorDroppedRecords,
             EtwTimestampFallbackCount = context.EtwTimestampFallbackCount,
