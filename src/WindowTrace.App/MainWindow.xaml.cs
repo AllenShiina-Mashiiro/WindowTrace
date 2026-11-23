@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Diagnostics;
 using System.IO;
 using System.Collections.ObjectModel;
@@ -549,7 +550,7 @@ public partial class MainWindow : Window
             unchecked((ulong)snapshot.Handle),
             snapshot.ProcessName,
             snapshot.WindowTitle,
-            $"IsMinimized={snapshot.IsMinimized};FocusedWindowHandle={FormatWindowHandle(snapshot.FocusedWindowHandle)};GuiThreadFlags={snapshot.GuiThreadFlags?.ToString() ?? "Unavailable"};TimestampQuality=GetForegroundWindowSnapshotQpc");
+            $"IsMinimized={snapshot.IsMinimized};FocusedWindowHandle={FormatWindowHandle(snapshot.FocusedWindowHandle)};GuiThreadFlags={snapshot.GuiThreadFlags?.ToString() ?? "Unavailable"};FocusQueryDelayMs={FormatOptionalMilliseconds(snapshot.FocusQueryDelayMs)};TimestampQuality=GetForegroundWindowSnapshotQpc");
 
         _sessions.PublishForeground(item, snapshot.ProcessId);
         DisplayEvent(item);
@@ -561,6 +562,9 @@ public partial class MainWindow : Window
                 $"{(string.IsNullOrWhiteSpace(snapshot.WindowTitle) ? "(untitled window)" : snapshot.WindowTitle)}";
         });
     }
+
+    private static string FormatOptionalMilliseconds(double? value)
+        => value?.ToString("F3", CultureInfo.InvariantCulture) ?? "Unavailable";
 
     private static string FormatWindowHandle(nint? handle)
         => handle is nint value ? $"0x{value.ToInt64():X}" : "Unavailable";
