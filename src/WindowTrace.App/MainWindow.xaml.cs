@@ -24,7 +24,6 @@ public partial class MainWindow : Window
     private CpuSampler? _cpuSampler;
     private GpuPdhSampler? _gpuSampler;
     private PresentMonProcess? _presentMon;
-    private WindowSnapshot? _lastForegroundSnapshot;
     private bool _isMonitoring;
     private bool _isClosing;
     private long _displayedEvents;
@@ -157,7 +156,7 @@ public partial class MainWindow : Window
                 OnForegroundChanged(initialForeground);
 
             if (_sessions.TargetProcessId is uint targetPid)
-                StartTargetCollectors(targetPid);
+                await StartTargetCollectorsAsync(targetPid);
         }
         catch (Exception ex)
         {
@@ -209,7 +208,7 @@ public partial class MainWindow : Window
         await StopMonitoringAsync();
     }
 
-    private void SetTargetButton_Click(object sender, RoutedEventArgs e)
+    private async void SetTargetButton_Click(object sender, RoutedEventArgs e)
     {
         try
         {
@@ -221,11 +220,14 @@ public partial class MainWindow : Window
                 return;
             }
 
+            if (_sessions.IsSessionActive)
+                throw new InvalidOperationException("A diagnostic session is active. Stop monitoring before changing the target.");
+
+            await StopTargetCollectorsAsync();
             _sessions.SetTarget(snapshot.ProcessId, snapshot.ProcessName, snapshot.ProcessId);
-            _lastForegroundSnapshot = snapshot;
             TargetText.Text = $"Target: {snapshot.ProcessName} (PID {snapshot.ProcessId}) | {snapshot.WindowTitle}";
             if (_isMonitoring)
-                StartTargetCollectors(snapshot.ProcessId);
+                await StartTargetCollectorsAsync(snapshot.ProcessId);
         }
         catch (Exception ex)
         {
@@ -237,6 +239,9 @@ public partial class MainWindow : Window
     {
         try
         {
+            if (_sessions.IsSessionActive)
+                throw new InvalidOperationException("A diagnostic session is active. Stop monitoring before clearing the target.");
+
             await StopTargetCollectorsAsync();
             _sessions.ClearTarget();
             TargetText.Text = "No target selected. Bring the game to the foreground, then select it below.";
@@ -247,7 +252,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void BrowsePresentMonButton_Click(object sender, RoutedEventArgs e)
+    private async void BrowsePresentMonButton_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new OpenFileDialog
         {
@@ -261,7 +266,7 @@ public partial class MainWindow : Window
             PresentMonPathText.Text = dialog.FileName;
             if (_isMonitoring && _sessions.TargetProcessId is uint targetPid)
             {
-                _ = StopPresentMonAndRestartAsync(targetPid);
+                await StopPresentMonAndRestartAsync(targetPid);
             }
         }
     }
@@ -277,10 +282,10 @@ public partial class MainWindow : Window
         StartPresentMon(targetPid);
     }
 
-    private void StartTargetCollectors(uint processId)
+    private async Task StartTargetCollectorsAsync(uint processId)
     {
-        _ = StartCpuSamplerAsync(processId);
-        _ = StartGpuSamplerAsync(processId);
+        await StartCpuSamplerAsync(processId);
+        await StartGpuSamplerAsync(processId);
         StartPresentMon(processId);
     }
 
