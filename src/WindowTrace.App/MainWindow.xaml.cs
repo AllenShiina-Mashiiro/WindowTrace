@@ -26,8 +26,8 @@ public partial class MainWindow : Window
     private CpuSampler? _cpuSampler;
     private GpuPdhSampler? _gpuSampler;
     private PresentMonProcess? _presentMon;
-    private bool _isMonitoring;
-    private bool _isClosing;
+    private volatile bool _isMonitoring;
+    private volatile bool _isClosing;
     private long _displayedEvents;
     private long _presentMonFrameCount;
     private long _gpuSampleCount;
