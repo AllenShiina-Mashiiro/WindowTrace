@@ -287,7 +287,7 @@ public sealed class DiagnosticSessionManager
 
         await completedWriter.DisposeAsync();
         await WriteQualityReportAsync(completedWriter, context!, completionQpc, "PostCaptureElapsed");
-        StatusChanged?.Invoke($"Diagnostic session completed: {completedWriter.FilePath}. Queue drops: {completedWriter.DroppedRecords}; size limit reached: {completedWriter.LimitReached}.");
+        StatusChanged?.Invoke($"Diagnostic session completed: {completedWriter.FilePath}. Records not persisted: {completedWriter.DroppedRecords}; size limit reached: {completedWriter.LimitReached}.");
     }
 
     public async Task StopAsync()
@@ -364,7 +364,12 @@ public sealed class DiagnosticSessionManager
             writer.BytesWritten,
             writer.MaxBytes,
             writer.LimitReached,
-            writer.LastError?.ToString());
+            writer.LastError?.ToString())
+        {
+            QueueOverflowDroppedRecords = writer.QueueOverflowDroppedRecords,
+            FileLimitDroppedRecords = writer.FileLimitDroppedRecords,
+            WriterErrorDroppedRecords = writer.WriterErrorDroppedRecords
+        };
 
         try
         {
