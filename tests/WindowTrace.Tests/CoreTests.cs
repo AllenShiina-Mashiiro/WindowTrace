@@ -64,7 +64,11 @@ public sealed class CoreTests
                 new DiagnosticEvent(Guid.NewGuid(), "ThreadContextSwitch", "NT Kernel Logger",
                     qpc + (long)(clock.Frequency * 1.5d), clock.Frequency,
                     clock.ToUtc(qpc + (long)(clock.Frequency * 1.5d)), 1500,
-                    4242, 88, null, "TestGame", null, "OldThreadState=Waiting;NewThreadId=88", sessionId)
+                    4242, 88, null, "TestGame", null, "OldThreadState=Waiting;NewThreadId=88", sessionId),
+                new DiagnosticEvent(Guid.NewGuid(), "CollectorWarning", "WindowTrace",
+                    qpc + (long)(clock.Frequency * 1.2d), clock.Frequency,
+                    clock.ToUtc(qpc + (long)(clock.Frequency * 1.2d)), 1200,
+                    null, null, null, null, null, "ETW realtime consumer stopped unexpectedly.", sessionId)
             };
             await File.WriteAllLinesAsync(jsonlPath, events.Select(item => System.Text.Json.JsonSerializer.Serialize(item)));
 
@@ -94,6 +98,8 @@ public sealed class CoreTests
             Assert.Contains("FPS=60.00", report);
             Assert.Contains("ThreadContextSwitch", report);
             Assert.Contains("NT Kernel Logger", report);
+            Assert.Contains("Collector health and data gaps", report);
+            Assert.Contains("ETW realtime consumer stopped unexpectedly", report);
             Assert.Contains("ETW events lost", report);
             Assert.Contains("does not establish causation", report);
         }
