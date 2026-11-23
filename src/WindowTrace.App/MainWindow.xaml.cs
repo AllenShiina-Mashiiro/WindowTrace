@@ -69,6 +69,9 @@ public partial class MainWindow : Window
             FooterText.Text = $"Writing JSONL diagnostics to: {path}";
 
             AddSystemEvent("MonitoringStarted", "Foreground monitor started.");
+            var initialForeground = _windowMonitor.CaptureForeground();
+            if (initialForeground is not null)
+                OnForegroundChanged(initialForeground);
         }
         catch (Exception ex)
         {
@@ -76,7 +79,7 @@ public partial class MainWindow : Window
             var failedWriter = _writer;
             _writer = null;
             if (failedWriter is not null)
-                _ = failedWriter.DisposeAsync();
+                await failedWriter.DisposeAsync();
             StartButton.IsEnabled = true;
             StopButton.IsEnabled = false;
             StatusText.Text = "Unable to start monitoring";
