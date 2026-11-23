@@ -841,9 +841,11 @@ public partial class MainWindow : Window
         StartButton.IsEnabled = true;
         StopButton.IsEnabled = false;
         StatusText.Text = "Monitoring stopped";
-        FooterText.Text = errors.Count == 0
-            ? "Monitoring stopped and active collectors were finalized."
-            : $"Monitoring stopped with warnings: {string.Join(" | ", errors)}";
+        FooterText.Text = errors.Count > 0
+            ? $"Monitoring stopped with warnings: {string.Join(" | ", errors)}"
+            : _sessions.LastCompletedReportPath is string reportPath
+                ? $"Monitoring stopped. Diagnostic report: {reportPath}"
+                : "Monitoring stopped and active collectors were finalized.";
     }
 
     private async void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
