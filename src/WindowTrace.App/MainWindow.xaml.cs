@@ -135,7 +135,7 @@ public partial class MainWindow : Window
         try
         {
             _history.Reset();
-            Interlocked.Exchange(ref _totalEvents, 0);
+            Interlocked.Exchange(ref _displayedEvents, 0);
             Interlocked.Exchange(ref _presentMonFrameCount, 0);
             Interlocked.Exchange(ref _gpuSampleCount, 0);
             Events.Clear();
