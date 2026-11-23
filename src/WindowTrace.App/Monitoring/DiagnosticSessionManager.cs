@@ -165,8 +165,33 @@ public sealed class DiagnosticSessionManager
         State = DiagnosticSessionState.FocusLost;
 
         var preRollStart = focusLostQpc - (long)(_clock.Frequency * 3d);
-        foreach (var priorEvent in _buffer.Snapshot().Where(e => e.QpcTimestamp >= preRollStart))
+        var preRollEvents = _buffer.Snapshot()
+            .Where(e => e.QpcTimestamp >= preRollStart && e.QpcTimestamp <= focusLostQpc)
+            .OrderBy(e => e.QpcTimestamp)
+            .ToArray();
+
+        foreach (var priorEvent in preRollEvents)
             _writer.TryWrite(ForActiveSession(priorEvent));
+
+        var earliestQpc = preRollEvents.Length == 0 ? focusLostQpc : preRollEvents[0].QpcTimestamp;
+        var actualPreRollMs = Math.Max(0, _clock.ElapsedMilliseconds(earliestQpc, focusLostQpc));
+        var qualityDetails = $"RequestedPreRollMs=3000;ActualPreRollMs={actualPreRollMs:F3};PreRollEventCount={preRollEvents.Length};BufferCapacity={_buffer.Capacity};BufferEvictionsSinceStartup={_buffer.DroppedEvents}";
+        var marker = new DiagnosticEvent(
+            Guid.NewGuid(),
+            "DiagnosticSessionStarted",
+            "WindowTrace",
+            focusLostQpc,
+            _clock.Frequency,
+            _clock.ToUtc(focusLostQpc),
+            0,
+            _targetProcessId,
+            null,
+            null,
+            _targetProcessName,
+            null,
+            qualityDetails,
+            _sessionId);
+        _writer.TryWrite(marker);
     }
 
     private DiagnosticEvent ForActiveSession(DiagnosticEvent item)
@@ -188,6 +213,14 @@ public sealed class DiagnosticSessionManager
                 return;
 
             completedWriter = _writer;
+            var completionQpc = _clock.GetTimestamp();
+            completedWriter.TryWrite(new DiagnosticEvent(
+                Guid.NewGuid(), "DiagnosticSessionCompleted", "WindowTrace",
+                completionQpc, _clock.Frequency, _clock.ToUtc(completionQpc),
+                _clock.ElapsedMilliseconds(_sessionStartQpc, completionQpc),
+                _targetProcessId, null, null, _targetProcessName, null,
+                $"CompletionReason=PostCaptureElapsed;WriterDropsBeforeFinalize={completedWriter.DroppedRecords}",
+                _sessionId));
             LastCompletedSessionPath = completedWriter.FilePath;
             _writer = null;
             _postCaptureDeadlineQpc = null;
@@ -205,7 +238,17 @@ public sealed class DiagnosticSessionManager
         {
             writer = _writer;
             if (writer is not null)
+            {
+                var stopQpc = _clock.GetTimestamp();
+                writer.TryWrite(new DiagnosticEvent(
+                    Guid.NewGuid(), "DiagnosticSessionStopped", "WindowTrace",
+                    stopQpc, _clock.Frequency, _clock.ToUtc(stopQpc),
+                    _clock.ElapsedMilliseconds(_sessionStartQpc, stopQpc),
+                    _targetProcessId, null, null, _targetProcessName, null,
+                    $"CompletionReason=MonitoringStopped;WriterDropsBeforeFinalize={writer.DroppedRecords}",
+                    _sessionId));
                 LastCompletedSessionPath = writer.FilePath;
+            }
             _writer = null;
             _postCaptureDeadlineQpc = null;
             if (writer is not null)
