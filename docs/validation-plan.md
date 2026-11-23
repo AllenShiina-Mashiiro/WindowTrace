@@ -59,6 +59,9 @@ Inspect QPC values, not only wall-clock display strings.
 - Record EventsLost counters and inspect quality warnings.
 - Confirm that the collector shuts down cleanly and does not leave a WindowTrace ETW session behind.
 - Compare available providers and event names between 25H2 and 26H2.
+- Verify target-thread discovery events include the selected game's GUI thread and any additional game threads reported by kernel ThreadStart/DCStart rundown.
+- Confirm context-switch records identify OldThreadId/NewThreadId, their mapped PIDs, target switch direction, OldThreadState, OldThreadWaitReason and NewThreadWaitTime.
+- Treat missing thread-to-process mappings as unknown; do not count system-wide context switches as game-thread scheduling evidence.
 
 ### CPU
 - Compare process CPU percentage with Task Manager over a sustained interval.
