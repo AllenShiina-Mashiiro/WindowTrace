@@ -145,8 +145,12 @@ public sealed class JsonlEventWriter : IAsyncDisposable
         }
         finally
         {
-            while (_channel.Reader.TryRead(out _))
-                Interlocked.Increment(ref _droppedRecords);
+            if (_worker.IsCompleted)
+            {
+                while (_channel.Reader.TryRead(out _))
+                    Interlocked.Increment(ref _droppedRecords);
+            }
+
             _cancellation.Dispose();
         }
     }
