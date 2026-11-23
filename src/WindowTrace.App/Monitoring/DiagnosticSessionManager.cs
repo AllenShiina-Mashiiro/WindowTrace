@@ -1,3 +1,4 @@
+using System.IO;
 using WindowTrace.Core;
 using WindowTrace.Storage;
 
