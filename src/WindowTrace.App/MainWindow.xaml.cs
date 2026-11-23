@@ -779,8 +779,8 @@ public partial class MainWindow : Window
             _gpuSampler is null && _presentMon is null && !_sessions.IsSessionActive)
             return;
 
-        _windowMonitor.Stop();
         _isMonitoring = false;
+        _windowMonitor.Stop();
         _sessionTimer.Stop();
 
         AddSystemEvent("MonitoringStopped", "Window monitor stopped.");
