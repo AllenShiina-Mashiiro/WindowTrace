@@ -65,10 +65,10 @@ Missing data is not filled with zero. A provider or counter that is not availabl
 2. Launch the game and leave its main window open.
 3. Click **1. Select game window**. Choose the game from the visible-window list; use **Refresh list** if it is missing. There is no countdown.
 4. Optionally select the official PresentMon 2.x executable using **Browse PresentMon.exe**.
-5. Click **2. Start monitoring**. The status should change to **Ready: waiting for <game> to lose focus**.
-6. Switch to the game and wait at least 3 seconds for collectors and rolling pre-roll to warm up.
+5. Click **2. Start monitoring**. The status shows the rolling pre-capture warm-up, then changes to **Ready to reproduce** automatically.
+6. Wait for **Ready to reproduce**; WindowTrace measures the 3-second rolling pre-roll itself, so you do not need to count.
 7. Alt+Tab to another application. WindowTrace automatically starts a diagnostic session when the selected game loses foreground.
-8. Return to the game and wait at least 5 seconds. The session should finalize automatically.
+8. Return to the game. The session captures at least 1.5 seconds, then finishes as soon as post-focus CPU and GPU samples are available (3-second maximum fallback).
 9. Repeat the focus-loss/focus-return cycle for additional samples. Each completed cycle produces its own session.
 10. Use **Open last report** to inspect the report, and **Export last session CSV** only if a spreadsheet-friendly copy is needed.
 
