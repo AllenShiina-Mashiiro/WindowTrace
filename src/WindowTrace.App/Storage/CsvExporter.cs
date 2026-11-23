@@ -23,6 +23,9 @@ public static class CsvExporter
         if (!File.Exists(jsonlPath))
             throw new FileNotFoundException("Diagnostic JSONL file was not found.", jsonlPath);
 
+        if (string.Equals(Path.GetFullPath(jsonlPath), Path.GetFullPath(csvPath), StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("CSV export path must not overwrite the source JSONL file.");
+
         var directory = Path.GetDirectoryName(csvPath);
         if (!string.IsNullOrWhiteSpace(directory))
             Directory.CreateDirectory(directory);
