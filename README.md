@@ -26,7 +26,7 @@ Every session records Windows version/build, DisplayVersion, UBR (when readable)
 ### Implemented in the development branch
 
 - WPF monitoring interface.
-- Foreground-window changes through `SetWinEventHook(EVENT_SYSTEM_FOREGROUND)`.
+- Foreground-window changes through `SetWinEventHook(EVENT_SYSTEM_FOREGROUND)`, plus minimize/restore events through `EVENT_SYSTEM_MINIMIZESTART` and `EVENT_SYSTEM_MINIMIZEEND`.
 - HWND, PID, TID, process name, window title and minimized state.
 - QPC timestamp and UTC conversion.
 - Target-process selection from the current foreground window.
