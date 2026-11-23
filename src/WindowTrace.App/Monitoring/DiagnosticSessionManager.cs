@@ -34,6 +34,7 @@ public sealed class DiagnosticSessionManager
     private double _actualPreRollMs;
     private int _preRollEventCount;
     private long _bufferEvictionsAtSessionStart;
+    private int? _etwEventsLost;
 
     public DiagnosticSessionManager(QpcClock clock, BoundedEventBuffer buffer, string? sessionsDirectory = null)
     {
@@ -52,6 +53,12 @@ public sealed class DiagnosticSessionManager
     public bool IsSessionActive { get { lock (_gate) return _writer is not null; } }
     public uint? TargetProcessId { get { lock (_gate) return _targetProcessId; } }
     public string? TargetProcessName { get { lock (_gate) return _targetProcessName; } }
+
+    public void SetEtwEventsLost(int eventsLost)
+    {
+        lock (_gate)
+            _etwEventsLost = eventsLost >= 0 ? eventsLost : null;
+    }
 
     public void SetTarget(uint processId, string processName, uint? currentForegroundProcessId)
     {
@@ -325,6 +332,7 @@ public sealed class DiagnosticSessionManager
             _preRollEventCount,
             _bufferEvictionsAtSessionStart,
             _buffer.DroppedEvents,
+            _etwEventsLost,
             _buffer.Capacity);
 
     private async Task WriteQualityReportAsync(
@@ -347,6 +355,7 @@ public sealed class DiagnosticSessionManager
             context.BufferCapacity,
             context.BufferEvictionsAtSessionStart,
             context.BufferEvictionsAtFinalization,
+            context.EtwEventsLostAtFinalization,
             writer.DroppedRecords,
             writer.BytesWritten,
             writer.MaxBytes,
@@ -373,5 +382,6 @@ public sealed class DiagnosticSessionManager
         int PreRollEventCount,
         long BufferEvictionsAtSessionStart,
         long BufferEvictionsAtFinalization,
+        int? EtwEventsLostAtFinalization,
         int BufferCapacity);
 }
