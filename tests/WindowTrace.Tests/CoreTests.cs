@@ -277,6 +277,70 @@ public sealed class CoreTests
         }
     }
 
+    [Fact]
+    public async Task JsonlEventWriter_FlushesEveryAcceptedRecordOnDispose()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "WindowTrace.Tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, "writer.jsonl");
+
+        try
+        {
+            var writer = new JsonlEventWriter(path, queueCapacity: 512);
+            const int recordCount = 200;
+            for (var i = 0; i < recordCount; i++)
+                Assert.True(writer.TryWrite(CreateEvent(i + 1) with { EventType = $"WriterEvent{i}" }));
+
+            await writer.DisposeAsync();
+
+            var lines = await File.ReadAllLinesAsync(path);
+            Assert.Equal(recordCount, lines.Length);
+            Assert.All(lines, line => Assert.NotNull(
+                System.Text.Json.JsonSerializer.Deserialize<DiagnosticEvent>(line)));
+            Assert.Equal(0, writer.DroppedRecords);
+            Assert.Null(writer.LastError);
+        }
+        finally
+        {
+            try { Directory.Delete(directory, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task JsonlEventWriter_EnforcesFileLimitWithoutWritingPartialRecords()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "WindowTrace.Tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, "limited.jsonl");
+
+        try
+        {
+            const long maxBytes = 1024 * 1024;
+            var writer = new JsonlEventWriter(path, queueCapacity: 4, maxBytes: maxBytes);
+            Assert.True(writer.TryWrite(CreateEvent(1) with { EventType = "BeforeLimit" }));
+            Assert.True(writer.TryWrite(CreateEvent(2) with
+            {
+                EventType = "OversizedRecord",
+                Details = new string('x', (int)maxBytes)
+            }));
+            Assert.True(writer.TryWrite(CreateEvent(3) with { EventType = "AfterLimit" }));
+
+            await writer.DisposeAsync();
+
+            var lines = await File.ReadAllLinesAsync(path);
+            Assert.Single(lines);
+            Assert.Contains("BeforeLimit", lines[0]);
+            Assert.True(writer.LimitReached);
+            Assert.True(writer.DroppedRecords >= 2);
+            Assert.True(writer.BytesWritten <= maxBytes);
+            Assert.Null(writer.LastError);
+        }
+        finally
+        {
+            try { Directory.Delete(directory, recursive: true); } catch { }
+        }
+    }
+
     private static DiagnosticEvent CreateEvent(long qpc)
         => new(
             Guid.NewGuid(),
