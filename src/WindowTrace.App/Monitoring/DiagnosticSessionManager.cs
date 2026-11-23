@@ -168,7 +168,8 @@ public sealed class DiagnosticSessionManager
         var sessionId = Guid.NewGuid();
         var startedUtc = _clock.ToUtc(focusLostQpc);
         var stamp = startedUtc.ToString("yyyyMMdd-HHmmss-fff");
-        var uniqueStamp = $"{stamp}-{sessionId.ToString("N")[..8]}";
+        var shortSessionId = sessionId.ToString("N")[..8];
+        var uniqueStamp = $"{stamp}-{shortSessionId}";
         var jsonlPath = Path.Combine(_sessionsDirectory, $"windowtrace-session-{uniqueStamp}.jsonl");
         var metadataPath = Path.Combine(_sessionsDirectory, $"windowtrace-session-{uniqueStamp}.session.json");
 
