@@ -1,9 +1,10 @@
 using System.Collections.ObjectModel;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Threading;
+using Microsoft.Win32;
 using WindowTrace.Core;
 using WindowTrace.Monitoring;
-using WindowTrace.Storage;
 
 namespace WindowTrace;
 
@@ -12,13 +13,19 @@ public partial class MainWindow : Window
     private const int UiEventLimit = 500;
 
     private readonly QpcClock _clock = new();
-    private readonly BoundedEventBuffer _history = new(4096);
+    private readonly BoundedEventBuffer _history = new(50_000);
     private readonly WindowMonitor _windowMonitor;
-    private JsonlEventWriter? _writer;
-    private long _monitorStartQpc;
+    private readonly DiagnosticSessionManager _sessions;
+    private readonly DispatcherTimer _sessionTimer;
+
+    private EtwRealtimeCollector? _etwCollector;
+    private CpuSampler? _cpuSampler;
+    private PresentMonProcess? _presentMon;
+    private WindowSnapshot? _lastForegroundSnapshot;
     private bool _isMonitoring;
     private bool _isClosing;
-    private long _totalEvents;
+    private long _displayedEvents;
+    private long _presentMonFrameCount;
 
     public ObservableCollection<WindowRow> Events { get; } = new();
 
@@ -31,8 +38,18 @@ public partial class MainWindow : Window
         _windowMonitor.ForegroundChanged += OnForegroundChanged;
         _windowMonitor.MonitorError += OnMonitorError;
 
+        _sessions = new DiagnosticSessionManager(_clock, _history);
+        _sessions.StatusChanged += OnSessionStatusChanged;
+
+        _sessionTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(100)
+        };
+        _sessionTimer.Tick += async (_, _) => await _sessions.CheckPostCaptureDeadlineAsync();
+
         EnvironmentText.Text =
             $"Environment: {RuntimeInformation.OSDescription} | " +
+            $"OS version/build: {Environment.OSVersion.Version} | " +
             $"Architecture: {RuntimeInformation.OSArchitecture} | " +
             $".NET: {RuntimeInformation.FrameworkDescription} | " +
             $"QPC frequency: {_clock.Frequency:N0} ticks/sec";
@@ -45,41 +62,42 @@ public partial class MainWindow : Window
 
         try
         {
-            var sessionId = Guid.NewGuid();
-            var startedUtc = DateTimeOffset.UtcNow;
-            var directory = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "WindowTrace",
-                "Sessions");
-
-            Directory.CreateDirectory(directory);
-            var fileStamp = startedUtc.ToString("yyyyMMdd-HHmmss-fff");
-            var path = Path.Combine(directory, $"windowtrace-{fileStamp}.jsonl");
-            var metadataPath = Path.Combine(directory, $"windowtrace-{fileStamp}.session.json");
-            _monitorStartQpc = _clock.GetTimestamp();
-            await SessionMetadata.WriteAsync(metadataPath, sessionId, startedUtc, _clock.Frequency);
-            _writer = new JsonlEventWriter(path);
-
             _windowMonitor.Start();
             _isMonitoring = true;
 
             StartButton.IsEnabled = false;
             StopButton.IsEnabled = true;
-            StatusText.Text = "Monitoring foreground-window changes";
-            FooterText.Text = $"Writing JSONL diagnostics to: {path}";
+            StatusText.Text = "Monitoring window focus and starting realtime collectors";
+            FooterText.Text = "Window monitor active.";
 
-            AddSystemEvent("MonitoringStarted", "Foreground monitor started.");
+            _etwCollector = new EtwRealtimeCollector(_clock);
+            _etwCollector.EventReceived += OnEtwEvent;
+            _etwCollector.CollectorWarning += OnCollectorWarning;
+            try
+            {
+                _etwCollector.Start();
+                var enabled = _etwCollector.ProviderStatuses.Count(p => p.Status == "Enabled");
+                FooterText.Text = $"ETW realtime consumer started. Enabled providers: {enabled}/{_etwCollector.ProviderStatuses.Count}. Kernel scheduling events may require administrator privileges.";
+            }
+            catch (Exception ex)
+            {
+                OnCollectorWarning($"ETW collector could not start: {ex.Message}");
+            }
+
+            _sessionTimer.Start();
+            AddSystemEvent("MonitoringStarted", "Window monitor and realtime ETW collection started.");
+
             var initialForeground = _windowMonitor.CaptureForeground();
             if (initialForeground is not null)
                 OnForegroundChanged(initialForeground);
+
+            if (_sessions.TargetProcessId is uint targetPid)
+                StartTargetCollectors(targetPid);
         }
         catch (Exception ex)
         {
             _isMonitoring = false;
-            var failedWriter = _writer;
-            _writer = null;
-            if (failedWriter is not null)
-                await failedWriter.DisposeAsync();
+            _windowMonitor.Stop();
             StartButton.IsEnabled = true;
             StopButton.IsEnabled = false;
             StatusText.Text = "Unable to start monitoring";
@@ -93,11 +111,149 @@ public partial class MainWindow : Window
         await StopMonitoringAsync();
     }
 
+    private void SetTargetButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var snapshot = _windowMonitor.CaptureForeground();
+            if (snapshot is null)
+            {
+                MessageBox.Show(this, "Unable to identify the current foreground process.", "WindowTrace",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            _sessions.SetTarget(snapshot.ProcessId, snapshot.ProcessName, snapshot.ProcessId);
+            _lastForegroundSnapshot = snapshot;
+            TargetText.Text = $"Target: {snapshot.ProcessName} (PID {snapshot.ProcessId}) | {snapshot.WindowTitle}";
+            if (_isMonitoring)
+                StartTargetCollectors(snapshot.ProcessId);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, "WindowTrace", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private async void ClearTargetButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            await StopTargetCollectorsAsync();
+            _sessions.ClearTarget();
+            TargetText.Text = "No target selected. Bring the game to the foreground, then select it below.";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, "WindowTrace", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void BrowsePresentMonButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "Select PresentMon executable",
+            Filter = "PresentMon executable (PresentMon.exe)|PresentMon.exe|Executable files (*.exe)|*.exe",
+            CheckFileExists = true
+        };
+
+        if (dialog.ShowDialog(this) == true)
+        {
+            PresentMonPathText.Text = dialog.FileName;
+            if (_isMonitoring && _sessions.TargetProcessId is uint targetPid)
+            {
+                _ = StopPresentMonAndRestartAsync(targetPid);
+            }
+        }
+    }
+
+    private async Task StopPresentMonAndRestartAsync(uint targetPid)
+    {
+        if (_presentMon is not null)
+        {
+            await _presentMon.DisposeAsync();
+            _presentMon = null;
+        }
+
+        StartPresentMon(targetPid);
+    }
+
+    private void StartTargetCollectors(uint processId)
+    {
+        _ = StartCpuSamplerAsync(processId);
+        StartPresentMon(processId);
+    }
+
+    private async Task StartCpuSamplerAsync(uint processId)
+    {
+        if (_cpuSampler is not null)
+        {
+            await _cpuSampler.DisposeAsync();
+            _cpuSampler = null;
+        }
+
+        var sampler = new CpuSampler(_clock);
+        sampler.SampleReceived += OnCpuSample;
+        sampler.Warning += OnCollectorWarning;
+        _cpuSampler = sampler;
+
+        try
+        {
+            sampler.Start(processId);
+        }
+        catch (Exception ex)
+        {
+            OnCollectorWarning($"CPU sampler could not start: {ex.Message}");
+        }
+    }
+
+    private void StartPresentMon(uint processId)
+    {
+        var path = PresentMonPathText.Text.Trim();
+        if (string.IsNullOrWhiteSpace(path))
+            return;
+
+        if (_presentMon is { IsRunning: true })
+            return;
+
+        var collector = new PresentMonProcess(_clock);
+        collector.FrameReceived += OnPresentMonFrame;
+        collector.StatusChanged += OnCollectorWarning;
+
+        try
+        {
+            collector.Start(path, processId);
+            _presentMon = collector;
+        }
+        catch (Exception ex)
+        {
+            _ = collector.DisposeAsync();
+            OnCollectorWarning($"PresentMon could not start: {ex.Message}");
+        }
+    }
+
+    private async Task StopTargetCollectorsAsync()
+    {
+        if (_cpuSampler is not null)
+        {
+            await _cpuSampler.DisposeAsync();
+            _cpuSampler = null;
+        }
+
+        if (_presentMon is not null)
+        {
+            await _presentMon.DisposeAsync();
+            _presentMon = null;
+        }
+    }
+
     private void OnForegroundChanged(WindowSnapshot snapshot)
     {
         if (!_isMonitoring || _isClosing)
             return;
 
+        _lastForegroundSnapshot = snapshot;
         var diagnosticEvent = new DiagnosticEvent(
             Guid.NewGuid(),
             "ForegroundChanged",
@@ -105,7 +261,7 @@ public partial class MainWindow : Window
             snapshot.QpcTimestamp,
             _clock.Frequency,
             snapshot.UtcTimestamp,
-            _clock.ElapsedMilliseconds(_monitorStartQpc, snapshot.QpcTimestamp),
+            _clock.ElapsedMilliseconds(_clock.AnchorTimestamp, snapshot.QpcTimestamp),
             snapshot.ProcessId,
             snapshot.ThreadId,
             unchecked((ulong)snapshot.Handle),
@@ -113,7 +269,8 @@ public partial class MainWindow : Window
             snapshot.WindowTitle,
             $"IsMinimized={snapshot.IsMinimized}");
 
-        AddEvent(diagnosticEvent);
+        _sessions.PublishForeground(diagnosticEvent, snapshot.ProcessId);
+        DisplayEvent(diagnosticEvent);
 
         CurrentWindowText.Text =
             $"{snapshot.ProcessName} (PID {snapshot.ProcessId}) | " +
@@ -121,79 +278,129 @@ public partial class MainWindow : Window
             $"{(string.IsNullOrWhiteSpace(snapshot.WindowTitle) ? "(untitled window)" : snapshot.WindowTitle)}";
     }
 
+    private void OnEtwEvent(DiagnosticEvent item)
+    {
+        _sessions.PublishTelemetry(item);
+    }
+
+    private void OnCpuSample(DiagnosticEvent item)
+    {
+        _sessions.PublishTelemetry(item);
+        Dispatcher.BeginInvoke(() => DisplayEvent(item));
+    }
+
+    private void OnPresentMonFrame(DiagnosticEvent item)
+    {
+        _sessions.PublishTelemetry(item);
+        var count = Interlocked.Increment(ref _presentMonFrameCount);
+        if (count % 60 == 0)
+            Dispatcher.BeginInvoke(() => DisplayEvent(item));
+    }
+
+    private void OnCollectorWarning(string message)
+    {
+        if (_isClosing)
+            return;
+
+        Dispatcher.BeginInvoke(() =>
+        {
+            FooterText.Text = message;
+        });
+    }
+
+    private void OnSessionStatusChanged(string message)
+    {
+        if (_isClosing)
+            return;
+
+        Dispatcher.BeginInvoke(() =>
+        {
+            FooterText.Text = message;
+            StatusText.Text = _sessions.State.ToString();
+        });
+    }
+
     private void OnMonitorError(string message)
     {
         if (_isClosing)
             return;
 
-        FooterText.Text = $"Window monitor warning: {message}";
+        Dispatcher.BeginInvoke(() => FooterText.Text = $"Window monitor warning: {message}");
     }
 
     private void AddSystemEvent(string eventType, string details)
     {
         var qpc = _clock.GetTimestamp();
-        AddEvent(new DiagnosticEvent(
+        var item = new DiagnosticEvent(
             Guid.NewGuid(),
             eventType,
             "WindowTrace",
             qpc,
             _clock.Frequency,
             _clock.ToUtc(qpc),
-            _monitorStartQpc == 0 ? 0 : _clock.ElapsedMilliseconds(_monitorStartQpc, qpc),
+            _clock.ElapsedMilliseconds(_clock.AnchorTimestamp, qpc),
             Environment.ProcessId,
             null,
             null,
             null,
             null,
-            details));
+            details);
+
+        _sessions.PublishTelemetry(item);
+        DisplayEvent(item);
     }
 
-    private void AddEvent(DiagnosticEvent item)
+    private void DisplayEvent(DiagnosticEvent item)
     {
-        _history.Add(item);
-
-        if (_writer is not null && !_writer.TryWrite(item))
+        if (!Dispatcher.CheckAccess())
         {
-            FooterText.Text = "Warning: JSONL write queue is full; one or more records could not be queued.";
+            Dispatcher.BeginInvoke(() => DisplayEvent(item));
+            return;
         }
 
         Events.Insert(0, new WindowRow(
             item.UtcTimestamp,
             item.RelativeMilliseconds,
+            item.EventType,
             item.ProcessId?.ToString() ?? "—",
             item.ProcessName ?? "—",
-            item.WindowTitle ?? item.Details ?? "—",
-            item.Details?.Contains("IsMinimized=True", StringComparison.OrdinalIgnoreCase) == true));
+            item.WindowTitle ?? item.Details ?? "—"));
 
         while (Events.Count > UiEventLimit)
             Events.RemoveAt(Events.Count - 1);
 
-        EventCountText.Text = Interlocked.Increment(ref _totalEvents).ToString();
+        EventCountText.Text = Interlocked.Increment(ref _displayedEvents).ToString();
     }
 
     private async Task StopMonitoringAsync()
     {
-        if (!_isMonitoring && _writer is null)
+        if (!_isMonitoring && _etwCollector is null && _cpuSampler is null &&
+            _presentMon is null && !_sessions.IsSessionActive)
             return;
 
         _windowMonitor.Stop();
         _isMonitoring = false;
+        _sessionTimer.Stop();
 
-        AddSystemEvent("MonitoringStopped", "Foreground monitor stopped.");
+        AddSystemEvent("MonitoringStopped", "Window monitor stopped.");
 
-        var writer = _writer;
-        _writer = null;
-        if (writer is not null)
-            await writer.DisposeAsync();
+        await StopTargetCollectorsAsync();
+
+        if (_etwCollector is not null)
+        {
+            await _etwCollector.DisposeAsync();
+            var lost = _etwCollector.EventsLost;
+            FooterText.Text = lost >= 0
+                ? $"ETW collector stopped. Events lost reported by TraceEvent: {lost}."
+                : "ETW collector stopped. Event-loss count unavailable.";
+            _etwCollector = null;
+        }
+
+        await _sessions.StopAsync();
 
         StartButton.IsEnabled = true;
         StopButton.IsEnabled = false;
         StatusText.Text = "Monitoring stopped";
-
-        if (writer?.LastError is not null)
-            FooterText.Text = $"Log writer error: {writer.LastError.Message}";
-        else if (writer is not null)
-            FooterText.Text = $"Log saved: {writer.FilePath} | Queue drops: {writer.DroppedRecords}";
     }
 
     private async void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
@@ -214,8 +421,8 @@ public partial class MainWindow : Window
     public sealed record WindowRow(
         DateTimeOffset UtcTimestamp,
         double RelativeMilliseconds,
+        string EventType,
         string ProcessId,
         string ProcessName,
-        string WindowTitle,
-        bool IsMinimized);
+        string Details);
 }
