@@ -3,6 +3,7 @@ using System.Diagnostics;
 using Xunit;
 using WindowTrace.Core;
 using WindowTrace.Storage;
+using WindowTrace.Monitoring;
 
 namespace WindowTrace.Tests;
 
@@ -34,6 +35,60 @@ public sealed class CoreTests
         Assert.True(second > first);
         Assert.True(clock.Frequency > 0);
         Assert.True(clock.ElapsedMilliseconds(first, second) > 0);
+    }
+
+    [Fact]
+    public async Task DiagnosticSessionManager_CapturesPreRollAndFocusTransitions()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "WindowTrace.Tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var clock = new QpcClock();
+        var manager = new DiagnosticSessionManager(clock, new BoundedEventBuffer(1000), directory);
+
+        try
+        {
+            manager.SetTarget(111, "TestGame", 111);
+
+            var preRollQpc = clock.GetTimestamp();
+            manager.PublishTelemetry(CreateEvent(preRollQpc) with { EventType = "PreRollEvent" });
+
+            var lostQpc = clock.GetTimestamp();
+            manager.PublishForeground(
+                CreateEvent(lostQpc) with { EventType = "ForegroundChanged", ProcessId = 222 },
+                222);
+
+            Assert.True(manager.IsSessionActive);
+            Assert.Equal(DiagnosticSessionState.FocusLost, manager.State);
+
+            var gainedQpc = clock.GetTimestamp();
+            manager.PublishForeground(
+                CreateEvent(gainedQpc) with { EventType = "ForegroundChanged", ProcessId = 111 },
+                111);
+
+            Assert.Equal(DiagnosticSessionState.FocusGainedPostCapture, manager.State);
+            await manager.StopAsync();
+
+            var jsonlPath = Assert.IsType<string>(manager.LastCompletedSessionPath);
+            Assert.True(File.Exists(jsonlPath));
+            Assert.True(File.Exists(Path.ChangeExtension(jsonlPath, ".quality.json")));
+
+            var lines = await File.ReadAllLinesAsync(jsonlPath);
+            var events = lines
+                .Where(line => !string.IsNullOrWhiteSpace(line))
+                .Select(line => System.Text.Json.JsonSerializer.Deserialize<DiagnosticEvent>(line))
+                .Where(item => item is not null)
+                .ToArray();
+
+            Assert.Contains(events, item => item!.EventType == "PreRollEvent" && item.SessionId is not null);
+            Assert.Contains(events, item => item!.EventType == "FocusLost");
+            Assert.Contains(events, item => item!.EventType == "FocusGained");
+            Assert.Contains(events, item => item!.EventType == "DiagnosticSessionStopped");
+        }
+        finally
+        {
+            try { await manager.StopAsync(); } catch { }
+            try { Directory.Delete(directory, recursive: true); } catch { }
+        }
     }
 
     [Fact]
