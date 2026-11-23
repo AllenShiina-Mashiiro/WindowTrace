@@ -45,6 +45,7 @@ public partial class MainWindow : Window
 
         _windowMonitor = new WindowMonitor(_clock);
         _windowMonitor.ForegroundChanged += OnForegroundChanged;
+        _windowMonitor.WindowStateChanged += OnWindowStateChanged;
         _windowMonitor.MonitorError += OnMonitorError;
 
         _sessions = new DiagnosticSessionManager(_clock, _history);
@@ -487,7 +488,7 @@ public partial class MainWindow : Window
             unchecked((ulong)snapshot.Handle),
             snapshot.ProcessName,
             snapshot.WindowTitle,
-            $"IsMinimized={snapshot.IsMinimized}");
+            $"IsMinimized={snapshot.IsMinimized};TimestampQuality=WinEventCallbackReceiptQpc");
 
         _sessions.PublishForeground(diagnosticEvent, snapshot.ProcessId);
         DisplayEvent(diagnosticEvent);
@@ -499,6 +500,30 @@ public partial class MainWindow : Window
                 $"HWND 0x{snapshot.Handle.ToInt64():X} | " +
                 $"{(string.IsNullOrWhiteSpace(snapshot.WindowTitle) ? "(untitled window)" : snapshot.WindowTitle)}";
         });
+    }
+
+    private void OnWindowStateChanged(WindowSnapshot snapshot)
+    {
+        if (!_isMonitoring || _isClosing)
+            return;
+
+        var item = new DiagnosticEvent(
+            Guid.NewGuid(),
+            snapshot.EventType,
+            "WinEvent",
+            snapshot.QpcTimestamp,
+            _clock.Frequency,
+            snapshot.UtcTimestamp,
+            _clock.ElapsedMilliseconds(_clock.AnchorTimestamp, snapshot.QpcTimestamp),
+            snapshot.ProcessId,
+            snapshot.ThreadId,
+            unchecked((ulong)snapshot.Handle),
+            snapshot.ProcessName,
+            snapshot.WindowTitle,
+            $"IsMinimized={snapshot.IsMinimized};TimestampQuality=WinEventCallbackReceiptQpc");
+
+        _sessions.PublishTelemetry(item);
+        DisplayEvent(item);
     }
 
     private async void SessionTimer_Tick(object? sender, EventArgs e)
