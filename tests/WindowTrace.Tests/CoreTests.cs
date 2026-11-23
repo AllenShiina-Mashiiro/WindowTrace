@@ -49,6 +49,20 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public void EtwTimestampNormalizer_DistinguishesEventQpcFromReceiptFallback()
+    {
+        var eventTimestamp = EtwTimestampNormalizer.Normalize(1234, 5678);
+        Assert.Equal(1234, eventTimestamp.QpcTimestamp);
+        Assert.Equal("ETWEventQPC", eventTimestamp.Quality);
+        Assert.False(eventTimestamp.UsedFallback);
+
+        var fallbackTimestamp = EtwTimestampNormalizer.Normalize(0, 5678);
+        Assert.Equal(5678, fallbackTimestamp.QpcTimestamp);
+        Assert.Equal("CollectorReceiptQPCFallback", fallbackTimestamp.Quality);
+        Assert.True(fallbackTimestamp.UsedFallback);
+    }
+
+    [Fact]
     public void QpcClock_UsesMonotonicTimestamps()
     {
         var clock = new QpcClock();
