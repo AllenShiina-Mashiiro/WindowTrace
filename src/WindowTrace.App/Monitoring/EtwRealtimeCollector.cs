@@ -36,6 +36,7 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
     private int _targetProcessId;
     private readonly ConcurrentDictionary<uint, uint> _threadProcessIds = new();
     private readonly ConcurrentDictionary<uint, long> _targetThreadReadyQpc = new();
+    private readonly ConcurrentDictionary<uint, long> _targetThreadLastScheduledQpc = new();
 
     public EtwRealtimeCollector(QpcClock clock, uint targetProcessId)
     {
@@ -55,6 +56,7 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
             return;
 
         _targetThreadReadyQpc.Clear();
+        _targetThreadLastScheduledQpc.Clear();
         foreach (var mapping in _threadProcessIds.Where(pair => pair.Value == processId))
             PublishTargetThreadDiscovered(mapping.Key, processId, "ExistingKernelThreadMap", _clock.GetTimestamp());
     }
@@ -256,12 +258,14 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
                 threadIdValue >= 0 ? (uint?)threadIdValue : null;
 
             var readyToRunDetail = "ReadyToRunMs=Unavailable";
-            if (newIsTarget && newThreadId is uint scheduledThreadId &&
-                _targetThreadReadyQpc.TryRemove(scheduledThreadId, out var readyQpc) &&
-                qpc >= readyQpc)
+            if (newIsTarget && newThreadId is uint scheduledThreadId)
             {
-                var readyToRunMs = (qpc - readyQpc) * 1000d / _clock.Frequency;
-                readyToRunDetail = $"ReadyToRunMs={readyToRunMs.ToString("F3", CultureInfo.InvariantCulture)}";
+                _targetThreadLastScheduledQpc[scheduledThreadId] = qpc;
+                if (_targetThreadReadyQpc.TryRemove(scheduledThreadId, out var readyQpc) && qpc >= readyQpc)
+                {
+                    var readyToRunMs = (qpc - readyQpc) * 1000d / _clock.Frequency;
+                    readyToRunDetail = $"ReadyToRunMs={readyToRunMs.ToString("F3", CultureInfo.InvariantCulture)}";
+                }
             }
 
             var details = string.Join(";",
@@ -319,7 +323,11 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
                 _threadProcessIds.TryGetValue(threadId, out var readyProcessId) &&
                 readyProcessId == TargetProcessId)
             {
-                _targetThreadReadyQpc[threadId] = qpc;
+                var isAfterLastSchedule = !_targetThreadLastScheduledQpc.TryGetValue(threadId, out var lastScheduledQpc) ||
+                    qpc > lastScheduledQpc;
+                if (isAfterLastSchedule)
+                    _targetThreadReadyQpc[threadId] = qpc;
+
                 EventReceived?.Invoke(new DiagnosticEvent(
                     Guid.NewGuid(),
                     "TargetThreadReady",
@@ -333,7 +341,7 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
                     null,
                     null,
                     null,
-                    $"TimestampQuality=ETWQPC;ReadyThreadId={threadId};{FormatPayloadValue(payload, "AdjustReason")};{FormatPayloadValue(payload, "AdjustIncrement")};{FormatPayloadValue(payload, "Flag")}"));
+                    $"TimestampQuality=ETWQPC;ReadyThreadId={threadId};ReadyAfterLastSchedule={isAfterLastSchedule};{FormatPayloadValue(payload, "AdjustReason")};{FormatPayloadValue(payload, "AdjustIncrement")};{FormatPayloadValue(payload, "Flag")}"));
             }
 
             return true;
@@ -355,6 +363,7 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
         {
             _threadProcessIds.TryRemove(lifecycleThreadId.Value, out _);
             _targetThreadReadyQpc.TryRemove(lifecycleThreadId.Value, out _);
+            _targetThreadLastScheduledQpc.TryRemove(lifecycleThreadId.Value, out _);
         }
 
         return true;
@@ -371,6 +380,7 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
                 return;
 
             _targetThreadReadyQpc.TryRemove(threadId, out _);
+            _targetThreadLastScheduledQpc.TryRemove(threadId, out _);
         }
 
         _threadProcessIds[threadId] = processId;
