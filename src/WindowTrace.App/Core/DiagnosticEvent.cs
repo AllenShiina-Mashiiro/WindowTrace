@@ -13,7 +13,8 @@ public sealed record DiagnosticEvent(
     ulong? WindowHandle,
     string? ProcessName,
     string? WindowTitle,
-    string? Details);
+    string? Details,
+    Guid? SessionId = null);
 
 public sealed record WindowSnapshot(
     long QpcTimestamp,
