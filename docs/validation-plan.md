@@ -56,7 +56,7 @@ Inspect QPC values, not only wall-clock display strings.
 - Record provider status for each machine.
 - Test once as a standard user and, only if policy permits, once from an already elevated terminal.
 - Do not change permissions or stop unrelated ETW sessions.
-- Record EventsLost counters and inspect quality warnings.
+- Record ETW EventsLost, rolling-buffer evictions, writer queue overflow, file-cap drops and writer-error drops as separate metrics. ETW EventsLost=0 does not mean the application persisted every event.
 - Confirm that the collector shuts down cleanly and does not leave a WindowTrace ETW session behind.
 - Compare available providers and event names between 25H2 and 26H2.
 - Verify target-thread discovery events include the selected game's GUI thread and any additional game threads reported by kernel ThreadStart/DCStart rundown.
@@ -93,7 +93,7 @@ Inspect QPC values, not only wall-clock display strings.
 ## Resource and reliability validation
 
 - Measure idle and active CPU/memory overhead with WindowTrace closed and open.
-- Observe the event buffer eviction count and ETW EventsLost counter.
+- Observe event-buffer evictions, ETW EventsLost, JSONL queue-overflow drops, file-cap drops and writer-error drops independently. A valid diagnostic run should have zero application queue-overflow drops and zero writer-error drops; if the file cap is reached, repeat with the filtered build and inspect the report before increasing the cap.
 - Verify the JSONL session file never exceeds its configured 256 MiB cap.
 - Verify a size cap or queue overflow appears in the quality report.
 - Test closing WindowTrace during background capture.
