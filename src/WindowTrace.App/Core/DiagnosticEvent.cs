@@ -14,7 +14,8 @@ public sealed record DiagnosticEvent(
     string? ProcessName,
     string? WindowTitle,
     string? Details,
-    Guid? SessionId = null);
+    Guid? SessionId = null,
+    string? CapturePhase = null);
 
 public sealed record WindowSnapshot(
     long QpcTimestamp,
