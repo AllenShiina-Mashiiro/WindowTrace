@@ -41,9 +41,18 @@ A successful run on the development machine is not evidence that the issue is ab
 
 ## Current implementation status
 
-The first implementation milestone focuses on the WPF shell, QPC timestamping, foreground-window monitoring, a bounded event buffer and diagnostic event persistence.
+The initial code slice now includes:
 
-ETW deep tracing, CPU/GPU telemetry and PresentMon integration are not considered implemented until their collectors, capability checks, error reporting and validation are added.
+- A .NET 10 WPF application shell.
+- QPC-based monotonic timestamps with a UTC anchor.
+- Foreground-window change observation through `SetWinEventHook(EVENT_SYSTEM_FOREGROUND)`.
+- HWND, PID, TID, process name, title and minimized-state capture.
+- A bounded in-memory event history.
+- Asynchronous JSONL event persistence.
+- A per-session metadata file containing OS description/version/build, runtime, architecture and QPC frequency.
+- A Windows GitHub Actions build workflow.
+
+This is an initial implementation slice, not a completed diagnostic session engine. The 3-second pre-roll / background / 5-second post-roll state machine, target-process selection, ETW collectors, CPU/GPU telemetry and PresentMon integration remain pending and must not be treated as implemented.
 
 ## Build
 
