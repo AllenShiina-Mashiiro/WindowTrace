@@ -376,6 +376,7 @@ public sealed class DiagnosticSessionManager
         SessionContext? context = null;
         long completionQpc = 0;
         string completionReason = string.Empty;
+        Task<PreRollInitializationResult>? preRollInitializationTask = null;
         lock (_gate)
         {
             if (_writer is null ||
@@ -396,7 +397,7 @@ public sealed class DiagnosticSessionManager
             completionReason = evidenceReady ? "PostFocusEvidenceReady" : "PostFocusMaximumElapsed";
             completedWriter = _writer;
             context = CaptureSessionContextLocked();
-            var preRollInitializationTask = _preRollInitializationTask;
+            preRollInitializationTask = _preRollInitializationTask;
             _preRollInitializationTask = null;
             completionQpc = nowQpc;
             completedWriter.TryWrite(new DiagnosticEvent(
@@ -459,6 +460,7 @@ public sealed class DiagnosticSessionManager
                 LastCompletedSessionPath = writer.FilePath;
             }
             _writer = null;
+            _preRollInitializationTask = null;
             _postCaptureMinimumQpc = null;
             _postCaptureMaximumQpc = null;
             _postCaptureStartedQpc = null;
