@@ -489,7 +489,7 @@ public partial class MainWindow : Window
             unchecked((ulong)snapshot.Handle),
             snapshot.ProcessName,
             snapshot.WindowTitle,
-            $"IsMinimized={snapshot.IsMinimized};TimestampQuality=WinEventCallbackReceiptQpc");
+            $"IsMinimized={snapshot.IsMinimized};ObjectId={snapshot.ObjectId};ChildId={snapshot.ChildId};TimestampQuality=WinEventCallbackReceiptQpc");
 
         _sessions.PublishForeground(diagnosticEvent, snapshot.ProcessId);
         DisplayEvent(diagnosticEvent);
