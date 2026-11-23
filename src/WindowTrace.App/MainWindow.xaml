@@ -59,7 +59,7 @@
                 <WrapPanel VerticalAlignment="Center">
                     <Button x:Name="SetTargetButton" Content="1. Select game window"
                             Click="SetTargetButton_Click" Padding="12,7" Margin="0,0,8,8" />
-                    <Button x:Name="ClearTargetButton" Content="Clear target"
+                    <Button x:Name="ClearTargetButton" Content="Clear selection"
                             Click="ClearTargetButton_Click" Padding="12,7" Margin="0,0,8,8" />
                     <TextBox x:Name="PresentMonPathText" Width="300" Height="30" Margin="0,0,8,8"
                              VerticalContentAlignment="Center" ToolTip="Path to PresentMon.exe (optional)" />
