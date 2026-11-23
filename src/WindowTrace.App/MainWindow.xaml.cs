@@ -119,7 +119,7 @@ public partial class MainWindow : Window
         return IntPtr.Zero;
     }
 
-    private void StartButton_Click(object sender, RoutedEventArgs e)
+    private async void StartButton_Click(object sender, RoutedEventArgs e)
     {
         if (_isMonitoring)
             return;
