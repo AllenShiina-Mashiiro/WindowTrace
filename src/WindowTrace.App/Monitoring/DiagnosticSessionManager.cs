@@ -71,6 +71,17 @@ public sealed class DiagnosticSessionManager
         StatusChanged?.Invoke($"Target selected: {processName} (PID {processId}). Switch away from this window to trigger a diagnostic session.");
     }
 
+    public void UpdateForegroundBaseline(uint? currentForegroundProcessId)
+    {
+        lock (_gate)
+        {
+            if (_writer is not null)
+                return;
+
+            _lastForegroundProcessId = currentForegroundProcessId;
+        }
+    }
+
     public void ClearTarget()
     {
         lock (_gate)
