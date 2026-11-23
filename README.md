@@ -104,6 +104,8 @@ Requirements: Windows x64 and the .NET 10 SDK.
 dotnet restore .\src\WindowTrace.App\WindowTrace.App.csproj
 dotnet build .\src\WindowTrace.App\WindowTrace.App.csproj -c Release
 dotnet restore .\tests\WindowTrace.Tests\WindowTrace.Tests.csproj
+dotnet test .\tests\WindowTrace.Tests\WindowTrace.Tests.csproj -c Release
+dotnet run --project .\src\WindowTrace.App\WindowTrace.App.csproj
 ```
 
 The Windows GitHub Actions workflow also publishes a self-contained `win-x64` ZIP artifact named `WindowTrace-win-x64` after build and tests pass.
