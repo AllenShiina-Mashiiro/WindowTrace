@@ -534,6 +534,7 @@ public sealed class DiagnosticSessionManager
             writer.LastError?.ToString())
         {
             QueueOverflowDroppedRecords = writer.QueueOverflowDroppedRecords,
+            PriorityQueueOverflowDroppedRecords = writer.PriorityQueueOverflowDroppedRecords,
             FileLimitDroppedRecords = writer.FileLimitDroppedRecords,
             WriterErrorDroppedRecords = writer.WriterErrorDroppedRecords,
             EtwTimestampFallbackCount = context.EtwTimestampFallbackCount,
