@@ -24,6 +24,10 @@ public sealed record SessionQualityReport(
     bool FileSizeLimitReached,
     string? WriterError)
 {
+    public long QueueOverflowDroppedRecords { get; init; }
+    public long FileLimitDroppedRecords { get; init; }
+    public long WriterErrorDroppedRecords { get; init; }
+
     public static async Task WriteAsync(string path, SessionQualityReport report)
     {
         var directory = Path.GetDirectoryName(path);
