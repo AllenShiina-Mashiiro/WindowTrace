@@ -36,7 +36,7 @@ Every session records Windows version/build, DisplayVersion, UBR (when readable)
   - background events continue to be written;
   - target regains foreground: capture continues for 5 seconds;
   - leaving again during post-capture returns the session to background capture.
-- Real-time ETW consumer for kernel Process, Thread, ContextSwitch and Dispatcher events, plus runtime provider checks for Win32k, DWM, DxgKrnl, DXGI, Kernel-Process and Kernel-Power.
+- Real-time ETW consumer for kernel Process, Thread, ContextSwitch and Dispatcher events, plus runtime provider checks for Win32k, DWM, DxgKrnl, DXGI, Kernel-Process and Kernel-Power. ETW is system-wide; the captured trace can include events from other processes.
 - 1-second system CPU and target-process CPU sampling.
 - Optional PDH GPU Engine utilization and GPU memory counters, where the local Windows counter set supports them.
 - Optional PresentMon child process. The process is filtered to the selected PID and started with `--qpc_time`, `--output_stdout`, `--no_console_stats` and `--no_track_input`.
@@ -115,14 +115,14 @@ PresentMon is an optional external dependency and is not bundled in this reposit
 - No kernel driver.
 - No game injection or process memory reading.
 - No global keyboard logger.
-- No key-character or key-content recording.
+- No key-character or key-content recording. Win32k ETW event payloads are deliberately omitted; only event timing and metadata are retained. Process-start payloads are also omitted to avoid persisting command lines.
 - No automatic BIOS, registry, driver or Windows configuration changes. Registry access is read-only and limited to OS version metadata.
 - No automatic elevation.
 - Monitoring continues when optional collectors fail.
 - CPU percentages, GPU engine counters, ETW payloads and PresentMon metrics represent different measurements and must not be treated as interchangeable.
 - Foreground change does not prove that the game's internal input thread has resumed.
 - A timestamp marker does not prove that a key was delivered to the game.
-- ETW provider payloads and PresentMon fields vary with Windows build, driver, GPU and capture path.
+- ETW provider payloads and PresentMon fields vary with Windows build, driver, GPU and capture path. Win32k payloads are intentionally redacted, so this source contributes timing/metadata rather than raw input details.
 
 ## Project status
 
