@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Threading;
+using System.Windows.Interop;
 using Microsoft.Win32;
 using WindowTrace.Core;
 using WindowTrace.Monitoring;
@@ -28,6 +29,10 @@ public partial class MainWindow : Window
     private bool _isClosing;
     private long _displayedEvents;
     private long _presentMonFrameCount;
+    private long _gpuSampleCount;
+    private HwndSource? _windowSource;
+    private const int InputMarkerHotKeyId = 0x5741;
+    private const int WmHotKey = 0x0312;
 
     public ObservableCollection<WindowRow> Events { get; } = new();
 
@@ -55,6 +60,64 @@ public partial class MainWindow : Window
             $"Architecture: {RuntimeInformation.OSArchitecture} | " +
             $".NET: {RuntimeInformation.FrameworkDescription} | " +
             $"QPC frequency: {_clock.Frequency:N0} ticks/sec";
+    }
+
+    private void Window_SourceInitialized(object? sender, EventArgs e)
+    {
+        var handle = new WindowInteropHelper(this).Handle;
+        _windowSource = HwndSource.FromHwnd(handle);
+        _windowSource?.AddHook(WindowProc);
+    }
+
+    private void InputMarkerCheckBox_Checked(object sender, RoutedEventArgs e)
+    {
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero ||
+            !RegisterHotKey(handle, InputMarkerHotKeyId, 0x0002 | 0x0001 | 0x4000, 0x7B))
+        {
+            MessageBox.Show(this,
+                $"Unable to register Ctrl+Alt+F12. Win32 error: {Marshal.GetLastWin32Error()}. The marker was not enabled.",
+                "WindowTrace input marker", MessageBoxButton.OK, MessageBoxImage.Warning);
+            InputMarkerCheckBox.IsChecked = false;
+            return;
+        }
+
+        FooterText.Text = "Input timestamp marker enabled. Ctrl+Alt+F12 is reserved and consumed as a marker; no other keyboard input is observed.";
+    }
+
+    private void InputMarkerCheckBox_Unchecked(object sender, RoutedEventArgs e)
+    {
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle != IntPtr.Zero)
+            UnregisterHotKey(handle, InputMarkerHotKeyId);
+    }
+
+    private IntPtr WindowProc(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (message == WmHotKey && wParam.ToInt32() == InputMarkerHotKeyId)
+        {
+            var qpc = _clock.GetTimestamp();
+            var item = new DiagnosticEvent(
+                Guid.NewGuid(),
+                "InputTestMarker",
+                "RegisterHotKey",
+                qpc,
+                _clock.Frequency,
+                _clock.ToUtc(qpc),
+                _clock.ElapsedMilliseconds(_clock.AnchorTimestamp, qpc),
+                _sessions.TargetProcessId,
+                null,
+                null,
+                _sessions.TargetProcessName,
+                null,
+                "Explicit Ctrl+Alt+F12 timestamp marker. No key contents or other keyboard events were collected.");
+
+            _sessions.PublishTelemetry(item);
+            DisplayEvent(item);
+            handled = true;
+        }
+
+        return IntPtr.Zero;
     }
 
     private async void StartButton_Click(object sender, RoutedEventArgs e)
@@ -360,7 +423,7 @@ public partial class MainWindow : Window
     private void OnGpuSample(DiagnosticEvent item)
     {
         _sessions.PublishTelemetry(item);
-        if (DateTimeOffset.UtcNow.Second % 5 == 0)
+        if (Interlocked.Increment(ref _gpuSampleCount) % 5 == 0)
             Dispatcher.InvokeAsync(() => DisplayEvent(item));
     }
 
@@ -487,11 +550,23 @@ public partial class MainWindow : Window
         _isClosing = true;
 
         await StopMonitoringAsync();
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle != IntPtr.Zero)
+            UnregisterHotKey(handle, InputMarkerHotKeyId);
+        _windowSource?.RemoveHook(WindowProc);
         _windowMonitor.Dispose();
 
         Closing -= Window_Closing;
         Close();
     }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 
     public sealed record WindowRow(
         DateTimeOffset UtcTimestamp,
