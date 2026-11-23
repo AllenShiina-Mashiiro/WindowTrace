@@ -68,7 +68,15 @@ public sealed class CoreTests
                 new DiagnosticEvent(Guid.NewGuid(), "CollectorWarning", "WindowTrace",
                     qpc + (long)(clock.Frequency * 1.2d), clock.Frequency,
                     clock.ToUtc(qpc + (long)(clock.Frequency * 1.2d)), 1200,
-                    null, null, null, null, null, "ETW realtime consumer stopped unexpectedly.", sessionId)
+                    null, null, null, null, null, "ETW realtime consumer stopped unexpectedly.", sessionId),
+                new DiagnosticEvent(Guid.NewGuid(), "InputTestMarker", "RegisterHotKey",
+                    qpc + (long)(clock.Frequency * 0.2d), clock.Frequency,
+                    clock.ToUtc(qpc + (long)(clock.Frequency * 0.2d)), 200,
+                    4242, null, null, "TestGame", null, "TestPair=1;MarkerPhase=Start", sessionId),
+                new DiagnosticEvent(Guid.NewGuid(), "InputTestMarker", "RegisterHotKey",
+                    qpc + (long)(clock.Frequency * 1.7d), clock.Frequency,
+                    clock.ToUtc(qpc + (long)(clock.Frequency * 1.7d)), 1700,
+                    4242, null, null, "TestGame", null, "TestPair=1;MarkerPhase=Response", sessionId)
             };
             await File.WriteAllLinesAsync(jsonlPath, events.Select(item => System.Text.Json.JsonSerializer.Serialize(item)));
 
@@ -100,6 +108,8 @@ public sealed class CoreTests
             Assert.Contains("NT Kernel Logger", report);
             Assert.Contains("Collector health and data gaps", report);
             Assert.Contains("ETW realtime consumer stopped unexpectedly", report);
+            Assert.Contains("Manual input-response marker intervals", report);
+            Assert.Contains("1,500.000 ms", report);
             Assert.Contains("ETW events lost", report);
             Assert.Contains("does not establish causation", report);
         }
