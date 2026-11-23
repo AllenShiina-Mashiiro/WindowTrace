@@ -228,6 +228,46 @@ public static class SessionReportGenerator
         return reportPath;
     }
 
+    private static void AppendPostFocusEvidenceSummary(
+        StringBuilder report,
+        DiagnosticEvent focusGained,
+        IReadOnlyList<DiagnosticEvent> renderingEvents,
+        IReadOnlyList<DiagnosticEvent> cpuEvents,
+        IReadOnlyList<DiagnosticEvent> gpuEvents,
+        IReadOnlyList<DiagnosticEvent> collectorEvents,
+        IReadOnlyList<DiagnosticEvent> etwEvents)
+    {
+        var endQpc = focusGained.QpcTimestamp + (long)(focusGained.QpcFrequency * 1.5d);
+        var rendering = renderingEvents.Where(item => item.QpcTimestamp >= focusGained.QpcTimestamp && item.QpcTimestamp <= endQpc)
+            .OrderBy(item => item.QpcTimestamp).FirstOrDefault();
+        var cpu = cpuEvents.Where(item => item.QpcTimestamp >= focusGained.QpcTimestamp && item.QpcTimestamp <= endQpc)
+            .OrderBy(item => item.QpcTimestamp).FirstOrDefault();
+        var gpu = gpuEvents.Where(item => item.QpcTimestamp >= focusGained.QpcTimestamp && item.QpcTimestamp <= endQpc)
+            .OrderBy(item => item.QpcTimestamp).FirstOrDefault();
+        var warnings = collectorEvents.Count(item => item.QpcTimestamp >= focusGained.QpcTimestamp && item.QpcTimestamp <= endQpc);
+        var win32kEvents = etwEvents.Where(item => item.QpcTimestamp >= focusGained.QpcTimestamp && item.QpcTimestamp <= endQpc &&
+            item.Source.Contains("Win32k", StringComparison.OrdinalIgnoreCase)).ToArray();
+        var targetContextSwitches = etwEvents.Count(item => item.EventType == "ThreadContextSwitch" &&
+            item.ProcessId == focusGained.ProcessId &&
+            item.QpcTimestamp >= focusGained.QpcTimestamp && item.QpcTimestamp <= endQpc);
+
+        report.AppendLine("### Post-focus evidence summary");
+        report.AppendLine();
+        report.AppendLine($"- First rendering summary: {FormatOffset(rendering, focusGained)}; {(rendering is null ? "no frame summary was recorded in this interval" : Truncate(rendering.Details ?? "No details", 220))}");
+        report.AppendLine($"- First target CPU sample: {FormatOffset(cpu, focusGained)}; {(cpu is null ? "no CPU sample was recorded in this interval" : Truncate(cpu.Details ?? "No details", 220))}");
+        report.AppendLine($"- First GPU sample: {FormatOffset(gpu, focusGained)}; {(gpu is null ? "no GPU sample was recorded in this interval" : Truncate(gpu.Details ?? "No details", 220))}");
+        report.AppendLine($"- Win32k ETW events in interval: {win32kEvents.Length}");
+        report.AppendLine($"- Target-process context-switch events in interval: {targetContextSwitches}");
+        report.AppendLine($"- Collector warnings/data-gap events in interval: {warnings}");
+        report.AppendLine("- These observations help distinguish a presentation stall from a delayed game response, but do not prove which component caused the delay.");
+        report.AppendLine();
+    }
+
+    private static string FormatOffset(DiagnosticEvent? item, DiagnosticEvent focusGained)
+        => item is null
+            ? "Unavailable"
+            : $"{(item.QpcTimestamp - focusGained.QpcTimestamp) * 1000d / focusGained.QpcFrequency:F3} ms after FocusGained";
+
     private static void AppendInputMarkerIntervals(StringBuilder report, IReadOnlyList<DiagnosticEvent> markers)
     {
         report.AppendLine("## Manual input-response marker intervals");
@@ -315,6 +355,7 @@ public static class SessionReportGenerator
         var end = start + 1500d;
         report.AppendLine($"Reference interval: {start.ToString("F3", CultureInfo.InvariantCulture)} to {end.ToString("F3", CultureInfo.InvariantCulture)} ms relative to session start.");
         report.AppendLine();
+        AppendPostFocusEvidenceSummary(report, focusGained, renderingEvents, cpuEvents, gpuEvents, collectorEvents, etwEvents);
 
         var windowEvents = renderingEvents.Concat(cpuEvents).Concat(gpuEvents).Concat(markerEvents).Concat(collectorEvents).Concat(etwEvents)
             .Where(item => item.RelativeMilliseconds >= start && item.RelativeMilliseconds <= end)
