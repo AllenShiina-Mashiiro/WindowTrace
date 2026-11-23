@@ -29,7 +29,7 @@ Every session records Windows version/build, DisplayVersion, UBR (when readable)
 - Foreground-window changes through `SetWinEventHook(EVENT_SYSTEM_FOREGROUND)`, plus minimize/restore events through `EVENT_SYSTEM_MINIMIZESTART` and `EVENT_SYSTEM_MINIMIZEEND`, and separate `EVENT_OBJECT_FOCUS` metadata events. Object focus is not treated as proof that the game's input thread has resumed.
 - HWND, PID, TID, process name, window title and minimized state; `GetGUIThreadInfo` focused child HWND and GUI flags are recorded separately from the foreground HWND.
 - QPC timestamp and UTC conversion.
-- Target-process selection from the current foreground window.
+- Explicit target-process selection from a refreshed list of visible top-level application windows; selected HWND/PID is revalidated before collectors start.
 - Diagnostic session state transitions:
   - target loses foreground: session starts;
   - previous 3 seconds are copied from the rolling event buffer;
@@ -60,15 +60,17 @@ Missing data is not filled with zero. A provider or counter that is not availabl
 ## How to use the current development build
 
 1. Run WindowTrace on the computer where the game will be tested.
-2. Optionally select the official PresentMon 2.x executable using **Browse PresentMon.exe**.
-3. Click **Start monitoring**.
-4. Click **Pick game in 3 seconds**, then immediately switch to the game. WindowTrace captures the foreground process after the countdown.
-5. Wait at least 3 seconds for target CPU/GPU, ETW and optional PresentMon collectors to warm up.
-6. Switch away from the target game, then return to it.
-7. Wait at least 5 seconds after returning. The diagnostic session should then be finalized automatically.
-8. Use **Export last session CSV** if a spreadsheet-friendly copy is needed.
+2. Launch the game and leave its main window open.
+3. Click **1. Select game window**. Choose the game from the visible-window list; use **Refresh list** if it is missing. There is no countdown.
+4. Optionally select the official PresentMon 2.x executable using **Browse PresentMon.exe**.
+5. Click **2. Start monitoring**. The status should change to **Ready: waiting for <game> to lose focus**.
+6. Switch to the game and wait at least 3 seconds for collectors and rolling pre-roll to warm up.
+7. Alt+Tab to another application. WindowTrace automatically starts a diagnostic session when the selected game loses foreground.
+8. Return to the game and wait at least 5 seconds. The session should finalize automatically.
+9. Repeat the focus-loss/focus-return cycle for additional samples. Each completed cycle produces its own session.
+10. Use **Open last report** to inspect the report, and **Export last session CSV** only if a spreadsheet-friendly copy is needed.
 
-Starting monitoring before picking the target is recommended. If a target was selected before monitoring starts and is no longer foreground, bring it back to the foreground once after starting monitoring; the next focus loss will trigger the diagnostic session.
+Select the target before starting monitoring. The target picker uses the process's visible main window instead of a timed foreground switch. If the selected window closes, refresh the list and select it again.
 
 ### Optional input timestamp marker
 
