@@ -184,6 +184,28 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OpenReportButton_Click(object sender, RoutedEventArgs e)
+    {
+        var path = _sessions.LastCompletedReportPath;
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+        {
+            MessageBox.Show(this, "No completed diagnostic report is available yet.", "WindowTrace",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            OpenReportButton.IsEnabled = false;
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"Unable to open the report: {ex.Message}", "WindowTrace",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
     private async void ExportButton_Click(object sender, RoutedEventArgs e)
     {
         var source = _sessions.LastCompletedSessionPath;
@@ -720,6 +742,8 @@ public partial class MainWindow : Window
         {
             FooterText.Text = message;
             StatusText.Text = _sessions.State.ToString();
+            OpenReportButton.IsEnabled =
+                _sessions.LastCompletedReportPath is string reportPath && File.Exists(reportPath);
         });
     }
 
