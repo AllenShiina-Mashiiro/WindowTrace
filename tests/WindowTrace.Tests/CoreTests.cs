@@ -69,6 +69,43 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public void FrameMetricsAggregator_KeepsSwapChainFrameRatesSeparate()
+    {
+        var clock = new QpcClock();
+        var aggregator = new FrameMetricsAggregator(clock);
+        var chainA = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["MsBetweenPresents"] = "16",
+            ["SwapChainAddress"] = "0xA",
+            ["ProcessID"] = "4242",
+            ["Application"] = "TestGame"
+        };
+        var chainB = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["MsBetweenPresents"] = "16",
+            ["SwapChainAddress"] = "0xB",
+            ["ProcessID"] = "4242",
+            ["Application"] = "TestGame"
+        };
+
+        DiagnosticEvent? summaryA = null;
+        DiagnosticEvent? summaryB = null;
+        for (var i = 0; i <= 120; i++)
+        {
+            var qpc = clock.AnchorTimestamp + (long)(clock.Frequency * i / 60d);
+            summaryA = aggregator.AddFrame(qpc, chainA, qpcIsFrameTimestamp: false) ?? summaryA;
+            summaryB = aggregator.AddFrame(qpc, chainB, qpcIsFrameTimestamp: false) ?? summaryB;
+        }
+
+        Assert.NotNull(summaryA);
+        Assert.NotNull(summaryB);
+        Assert.Contains("SwapChainAddress=0xA", summaryA!.Details);
+        Assert.Contains("SwapChainAddress=0xB", summaryB!.Details);
+        Assert.Contains("FPS=62.50", summaryA.Details);
+        Assert.Contains("FPS=62.50", summaryB.Details);
+    }
+
+    [Fact]
     public void FrameMetricsAggregator_DoesNotTreatReceiptTimeAsFrameInterval()
     {
         var clock = new QpcClock();
