@@ -120,7 +120,7 @@ public partial class MainWindow : Window
         return IntPtr.Zero;
     }
 
-    private async void StartButton_Click(object sender, RoutedEventArgs e)
+    private void StartButton_Click(object sender, RoutedEventArgs e)
     {
         if (_isMonitoring)
             return;
@@ -268,12 +268,6 @@ public partial class MainWindow : Window
 
     private async Task StopPresentMonAndRestartAsync(uint targetPid)
     {
-        if (_gpuSampler is not null)
-        {
-            await _gpuSampler.DisposeAsync();
-            _gpuSampler = null;
-        }
-
         if (_presentMon is not null)
         {
             await _presentMon.DisposeAsync();
@@ -372,6 +366,12 @@ public partial class MainWindow : Window
             _cpuSampler = null;
         }
 
+        if (_gpuSampler is not null)
+        {
+            await _gpuSampler.DisposeAsync();
+            _gpuSampler = null;
+        }
+
         if (_presentMon is not null)
         {
             await _presentMon.DisposeAsync();
@@ -432,7 +432,7 @@ public partial class MainWindow : Window
         _sessions.PublishTelemetry(item);
         var count = Interlocked.Increment(ref _presentMonFrameCount);
         if (count % 60 == 0)
-            Dispatcher.BeginInvoke(() => DisplayEvent(item));
+            Dispatcher.InvokeAsync(() => DisplayEvent(item));
     }
 
     private void OnCollectorWarning(string message)
