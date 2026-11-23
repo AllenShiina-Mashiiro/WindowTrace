@@ -35,11 +35,11 @@ public sealed class DiagnosticSessionManager
     private int _preRollEventCount;
     private long _bufferEvictionsAtSessionStart;
 
-    public DiagnosticSessionManager(QpcClock clock, BoundedEventBuffer buffer)
+    public DiagnosticSessionManager(QpcClock clock, BoundedEventBuffer buffer, string? sessionsDirectory = null)
     {
         _clock = clock;
         _buffer = buffer;
-        _sessionsDirectory = Path.Combine(
+        _sessionsDirectory = sessionsDirectory ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "WindowTrace",
             "Sessions");
