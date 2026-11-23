@@ -459,7 +459,7 @@ public sealed class DiagnosticSessionManager
         };
         await completedWriter.DisposeAsync();
         await WriteQualityReportAsync(completedWriter, context, completionQpc, completionReason);
-        StatusChanged?.Invoke($"Diagnostic session completed ({completionReason}): {completedWriter.FilePath}. Records not persisted: {completedWriter.DroppedRecords}; size limit reached: {completedWriter.LimitReached}.");
+        StatusChanged?.Invoke($"Diagnostic session completed ({completionReason}): {completedWriter.FilePath}. Records not persisted: {completedWriter.DroppedRecords}; regular telemetry budget reached: {completedWriter.RegularFileBudgetReached}; hard file cap reached: {completedWriter.TotalFileLimitReached}.");
     }
 
     public async Task StopAsync()
@@ -513,7 +513,7 @@ public sealed class DiagnosticSessionManager
             };
             await writer.DisposeAsync();
             await WriteQualityReportAsync(writer, context, completionQpc, "MonitoringStopped");
-            StatusChanged?.Invoke($"Diagnostic session stopped and saved: {writer.FilePath}. Records not persisted: {writer.DroppedRecords}; size limit reached: {writer.LimitReached}.");
+            StatusChanged?.Invoke($"Diagnostic session stopped and saved: {writer.FilePath}. Records not persisted: {writer.DroppedRecords}; regular telemetry budget reached: {writer.RegularFileBudgetReached}; hard file cap reached: {writer.TotalFileLimitReached}.");
         }
     }
 
