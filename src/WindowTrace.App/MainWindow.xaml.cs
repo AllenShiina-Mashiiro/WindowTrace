@@ -5,6 +5,7 @@ using System.Windows.Threading;
 using Microsoft.Win32;
 using WindowTrace.Core;
 using WindowTrace.Monitoring;
+using WindowTrace.Storage;
 
 namespace WindowTrace;
 
@@ -103,6 +104,39 @@ public partial class MainWindow : Window
             StatusText.Text = "Unable to start monitoring";
             FooterText.Text = ex.Message;
             MessageBox.Show(this, ex.Message, "WindowTrace", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private async void ExportButton_Click(object sender, RoutedEventArgs e)
+    {
+        var source = _sessions.LastCompletedSessionPath;
+        if (string.IsNullOrWhiteSpace(source) || !File.Exists(source))
+        {
+            MessageBox.Show(this, "No completed diagnostic session is available to export yet.", "WindowTrace",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var dialog = new SaveFileDialog
+        {
+            Title = "Export diagnostic session",
+            Filter = "CSV files (*.csv)|*.csv",
+            FileName = Path.GetFileNameWithoutExtension(source) + ".csv",
+            AddExtension = true,
+            DefaultExt = ".csv"
+        };
+
+        if (dialog.ShowDialog(this) != true)
+            return;
+
+        try
+        {
+            await CsvExporter.ExportJsonlAsync(source, dialog.FileName);
+            FooterText.Text = $"CSV exported: {dialog.FileName}";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, "CSV export failed", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -286,7 +320,7 @@ public partial class MainWindow : Window
     private void OnCpuSample(DiagnosticEvent item)
     {
         _sessions.PublishTelemetry(item);
-        Dispatcher.BeginInvoke(() => DisplayEvent(item));
+        Dispatcher.InvokeAsync(() => DisplayEvent(item));
     }
 
     private void OnPresentMonFrame(DiagnosticEvent item)
