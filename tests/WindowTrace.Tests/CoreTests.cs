@@ -131,7 +131,12 @@ public sealed class CoreTests
             var quality = new SessionQualityReport(
                 sessionId, clock.ToUtc(qpc + clock.Frequency), "Test", 4242, "TestGame",
                 qpc, qpc + clock.Frequency, 3000, 2900, 10, 50000, 0, 0, 0,
-                0, 1024, 256L * 1024 * 1024, false, null);
+                0, 1024, 256L * 1024 * 1024, false, null)
+            {
+                QueueOverflowDroppedRecords = 2,
+                FileLimitDroppedRecords = 3,
+                WriterErrorDroppedRecords = 4
+            };
 
             await using (var metadataStream = File.Create(Path.ChangeExtension(jsonlPath, ".session.json")))
                 await System.Text.Json.JsonSerializer.SerializeAsync(metadataStream, metadata);
@@ -162,6 +167,10 @@ public sealed class CoreTests
             Assert.Contains("Manual input-response marker intervals", report);
             Assert.Contains("1,500.000 ms", report);
             Assert.Contains("ETW events lost", report);
+            Assert.Contains("Records not persisted (total): 9", report);
+            Assert.Contains("Queue overflow: 2", report);
+            Assert.Contains("File size limit: 3", report);
+            Assert.Contains("Writer errors: 4", report);
             Assert.Contains("does not establish causation", report);
         }
         finally
