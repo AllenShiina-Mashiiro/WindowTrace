@@ -27,7 +27,9 @@
                 <Button x:Name="StopButton" Content="Stop" Click="StopButton_Click"
                         Padding="16,9" Margin="0,0,8,0" IsEnabled="False" />
                 <Button x:Name="ExportButton" Content="Export last session CSV" Click="ExportButton_Click"
-                        Padding="16,9" />
+                        Padding="16,9" Margin="0,0,8,0" />
+                <Button x:Name="OpenReportButton" Content="Open last report" Click="OpenReportButton_Click"
+                        Padding="16,9" IsEnabled="False" />
             </StackPanel>
         </DockPanel>
 
