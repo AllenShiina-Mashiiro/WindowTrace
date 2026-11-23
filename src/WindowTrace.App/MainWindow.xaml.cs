@@ -155,6 +155,7 @@ public partial class MainWindow : Window
             _lastReportedEtwEventsLost = -1;
             _lastReportedWindowEventDrops = _windowMonitor.DroppedPendingEvents;
             _sessions.SetEtwEventsLost(-1);
+            _sessions.SetEtwTimestampFallbackCount(0);
 
             _windowMonitor.Start();
             _isMonitoring = true;
@@ -708,6 +709,7 @@ public partial class MainWindow : Window
         finally
         {
             _sessions.SetEtwEventsLost(collector.EventsLost);
+            _sessions.SetEtwTimestampFallbackCount(collector.TimestampFallbackCount);
             FooterText.Text = collector.EventsLost >= 0
                 ? $"ETW collector stopped. Events lost: {collector.EventsLost}."
                 : "ETW collector stopped. Event-loss count unavailable.";
