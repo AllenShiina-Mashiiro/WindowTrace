@@ -68,7 +68,7 @@ public static class SessionReportGenerator
                 AddRecent(renderingEvents, item, item.EventType == "RenderingSummary");
                 AddRecent(cpuEvents, item, item.EventType == "CpuSample");
                 AddRecent(gpuEvents, item, item.EventType == "GpuPdhSample");
-                AddRecent(markerEvents, item, item.EventType is "InputTestMarker" or "TargetSelected" or "PresentMonCapability" or "EtwProviderCapability" or "TargetThreadDiscovered" or "TargetThreadEnumeration");
+                AddRecent(markerEvents, item, item.EventType is "InputTestMarker" or "TargetSelected" or "PresentMonCapability" or "EtwProviderCapability" or "TargetThreadDiscovered" or "TargetThreadEnumeration" or "PreRollCaptureSummary");
                 AddRecent(collectorEvents, item, item.EventType is "CollectorWarning" or "WindowMonitorWarning" or "WindowMonitorQueueDrops" or "EtwEventsLostCounter");
 
                 if (item.EventType == "FocusGained" &&
