@@ -584,7 +584,8 @@ public static class EtwEventFilter
                 "WaitForSynchronizationObjectFromGpu",
                 "VidSchiSignalSynchronizationObjectFromCpu",
                 "SetInterruptTargetPresentId",
-                "VSyncWaiterChange");
+                "VSyncWaiterChange",
+                "VSyncDPC");
         }
 
         if (providerName.Contains("Dwm-Core", StringComparison.OrdinalIgnoreCase))
