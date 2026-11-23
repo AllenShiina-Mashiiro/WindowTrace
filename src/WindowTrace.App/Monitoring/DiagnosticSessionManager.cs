@@ -154,7 +154,7 @@ public sealed class DiagnosticSessionManager
         var jsonlPath = Path.Combine(_sessionsDirectory, $"windowtrace-session-{stamp}.jsonl");
         var metadataPath = Path.Combine(_sessionsDirectory, $"windowtrace-session-{stamp}.session.json");
 
-        SessionMetadata.WriteAsync(metadataPath, sessionId, startedUtc, _clock.Frequency)
+        SessionMetadata.WriteAsync(metadataPath, sessionId, startedUtc, _clock.Frequency, _targetProcessId, _targetProcessName)
             .GetAwaiter().GetResult();
 
         _writer = new JsonlEventWriter(jsonlPath);
