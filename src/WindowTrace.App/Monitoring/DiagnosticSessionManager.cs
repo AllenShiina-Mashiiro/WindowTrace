@@ -264,7 +264,7 @@ public sealed class DiagnosticSessionManager
             null,
             _targetProcessName,
             null,
-            qualityDetails,
+            "PreRollInitialization=Pending;RequestedPreRollMs=3000",
             _sessionId);
         writer.TryWrite(marker);
         WriteSessionMarkerLocked("FocusLost", focusLostQpc, "Selected target process lost foreground.");
@@ -538,7 +538,6 @@ public sealed class DiagnosticSessionManager
             FileLimitDroppedRecords = writer.FileLimitDroppedRecords,
             WriterErrorDroppedRecords = writer.WriterErrorDroppedRecords,
             EtwTimestampFallbackCount = context.EtwTimestampFallbackCount,
-            PriorityQueueOverflowDroppedRecords = writer.PriorityQueueOverflowDroppedRecords,
             PreRollEventsSelected = context.PreRollEventCount,
             PreRollEventsQueued = context.PreRollEventsQueued,
             PreRollEventsRejected = context.PreRollEventsRejected,
