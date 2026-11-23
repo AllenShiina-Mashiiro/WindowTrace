@@ -59,9 +59,9 @@ public static class SessionReportGenerator
                 AddRecent(renderingEvents, item, item.EventType == "RenderingSummary");
                 AddRecent(cpuEvents, item, item.EventType == "CpuSample");
                 AddRecent(gpuEvents, item, item.EventType == "GpuPdhSample");
-                AddRecent(markerEvents, item, item.EventType is "InputTestMarker" or "TargetSelected" or "PresentMonCapability" or "EtwProviderStatus");
+                AddRecent(markerEvents, item, item.EventType is "InputTestMarker" or "TargetSelected" or "PresentMonCapability" or "EtwProviderCapability");
 
-                if (item.Source is not ("WindowTrace" or "PresentMonProcess" or "PresentMonMetrics" or "WinEvent" or "WindowPoll" or "PDH" or "GetSystemTimes+Process.TotalProcessorTime"))
+                if (item.Source is not ("WindowTrace" or "PresentMonProcess" or "PresentMonMetrics" or "WinEvent" or "WindowPoll" or "PDH" or "ETW" or "GetSystemTimes+Process.TotalProcessorTime"))
                 {
                     var key = $"{item.Source} / {item.EventType}";
                     etwCounts[key] = etwCounts.GetValueOrDefault(key) + 1;
