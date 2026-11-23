@@ -19,6 +19,7 @@ public sealed class QpcClock
     }
 
     public long Frequency { get; }
+    public long AnchorTimestamp => _anchorQpc;
 
     public long GetTimestamp() => Stopwatch.GetTimestamp();
 
