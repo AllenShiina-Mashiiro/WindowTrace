@@ -362,8 +362,13 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
         if (threadId == 0 || processId == 0)
             return;
 
-        if (_threadProcessIds.TryGetValue(threadId, out var previousPid) && previousPid == processId)
-            return;
+        if (_threadProcessIds.TryGetValue(threadId, out var previousPid))
+        {
+            if (previousPid == processId)
+                return;
+
+            _targetThreadReadyQpc.TryRemove(threadId, out _);
+        }
 
         _threadProcessIds[threadId] = processId;
         if (processId == TargetProcessId)
