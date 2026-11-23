@@ -57,7 +57,7 @@ public sealed class CoreTests
         for (var i = 0; i <= 120; i++)
         {
             var qpc = clock.AnchorTimestamp + (long)(clock.Frequency * i / 60d);
-            summary = aggregator.AddFrame(qpc, fields) ?? summary;
+            summary = aggregator.AddFrame(qpc, fields, qpcIsFrameTimestamp: false) ?? summary;
         }
 
         Assert.NotNull(summary);
