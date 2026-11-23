@@ -150,7 +150,8 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
             if (eventName.Contains("CSwitch", StringComparison.OrdinalIgnoreCase))
                 return;
 
-            var details = BuildPrivacySafeDetails(providerName, eventName, data);
+            var payloadDetails = BuildPrivacySafeDetails(providerName, eventName, data);
+            var details = $"EventId={data.ID};Task={data.TaskName};Opcode={data.OpcodeName};{payloadDetails}";
 
             EventReceived?.Invoke(new DiagnosticEvent(
                 Guid.NewGuid(),
