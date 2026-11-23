@@ -43,6 +43,7 @@ Every session records Windows version/build, DisplayVersion, UBR (when readable)
 - Optional timestamp-only input marker. It is off by default and registers only Ctrl+Alt+F12 when explicitly enabled.
 - JSONL event storage, session environment metadata, session quality report and CSV export.
 - Bounded WinEvent pending queue (16,384 events, reject-newest on saturation) with dropped-event counts emitted into the diagnostic stream; bounded session writer queue, buffer eviction accounting and a 256 MiB per-session JSONL file cap.
+- ETW generic events pass through a conservative provider/event allow-list: target-process Win32k message-pump observations, selected DxgKrnl GPU scheduling events, DWM frame scheduling, target-process DXGI Present events, target-process priority changes, selected power-latency events and system DPC/ISR events. Thread lifecycle, target ReadyThread and target context-switch observations use their dedicated paths. Full ETW payload text is not serialized; event metadata is retained to reduce allocation and disk pressure.
 - Core unit tests and Windows GitHub Actions build/test workflow.
 
 ### Not yet claimed as fully implemented or validated
@@ -91,10 +92,10 @@ A completed session normally produces:
 
 - `windowtrace-session-<timestamp>.jsonl` — event stream.
 - `windowtrace-session-<timestamp>.session.json` — OS/runtime/target metadata.
-- `windowtrace-session-<timestamp>.quality.json` — pre-roll coverage, buffer evictions, ETW event-loss count, queue drops, file cap and writer errors.
+- `windowtrace-session-<timestamp>.quality.json` — pre-roll coverage, buffer evictions, ETW event-loss count, distinct queue-overflow/file-cap/writer-error drop counts, file cap and writer errors.
 - Optional CSV export chosen by the user.
 
-The JSONL event stream preserves source and QPC fields. Event arrival order can differ between independent collectors; sort or correlate by `QpcTimestamp`, not by file line order.
+The JSONL event stream preserves source and QPC fields. Generic ETW provider payloads are intentionally omitted; the collector stores selected event metadata only. The quality report separates actual writer-queue overflow from records rejected after the file-size cap and from writer-error losses. Event arrival order can differ between independent collectors; sort or correlate by `QpcTimestamp`, not by file line order.
 
 ## Build and test
 
