@@ -151,7 +151,7 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
                 return;
 
             var payloadDetails = BuildPrivacySafeDetails(providerName, eventName, data);
-            var details = $"EventId={data.ID};Task={data.TaskName};Opcode={data.OpcodeName};{payloadDetails}";
+            var details = $"TimestampQuality=ETWQPC;EventId={data.ID};Task={data.TaskName};Opcode={data.OpcodeName};{payloadDetails}";
 
             EventReceived?.Invoke(new DiagnosticEvent(
                 Guid.NewGuid(),
@@ -204,7 +204,7 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
                 null,
                 data.ProcessName,
                 null,
-                string.Join(";", payload)));
+                $"TimestampQuality=ETWQPC;{string.Join(";", payload)}"));
         }
         catch (Exception ex)
         {
