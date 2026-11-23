@@ -173,7 +173,7 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
         }
     }
 
-    private void OnContextSwitch(dynamic data)
+    private void OnContextSwitch(TraceEvent data)
     {
         try
         {
@@ -183,13 +183,13 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
             if (qpc <= 0)
                 qpc = _clock.GetTimestamp();
 
-            var payloadNames = (string[])data.PayloadNames;
+            var payloadNames = data.PayloadNames;
             var payload = new List<string>(payloadNames.Length);
             for (var i = 0; i < payloadNames.Length; i++)
                 payload.Add($"{payloadNames[i]}={data.PayloadValue(i)}");
 
-            var processIdValue = (int)data.ProcessID;
-            var threadIdValue = (int)data.ThreadID;
+            var processIdValue = data.ProcessID;
+            var threadIdValue = data.ThreadID;
             EventReceived?.Invoke(new DiagnosticEvent(
                 Guid.NewGuid(),
                 "ThreadContextSwitch",
@@ -201,7 +201,7 @@ public sealed class EtwRealtimeCollector : IAsyncDisposable
                 processIdValue >= 0 ? (uint?)processIdValue : null,
                 threadIdValue >= 0 ? (uint?)threadIdValue : null,
                 null,
-                (string?)data.ProcessName,
+                data.ProcessName,
                 null,
                 string.Join(";", payload)));
         }
