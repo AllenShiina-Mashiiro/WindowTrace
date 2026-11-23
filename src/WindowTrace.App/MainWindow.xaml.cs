@@ -368,6 +368,7 @@ public partial class MainWindow : Window
         if (_etwCollector is not null)
             return;
 
+        _lastReportedEtwEventsLost = -1;
         var collector = new EtwRealtimeCollector(_clock);
         collector.EventReceived += OnEtwEvent;
         collector.CollectorWarning += OnCollectorWarning;
@@ -442,7 +443,6 @@ public partial class MainWindow : Window
         if (!_isMonitoring || _isClosing)
             return;
 
-        _lastForegroundSnapshot = snapshot;
         var diagnosticEvent = new DiagnosticEvent(
             Guid.NewGuid(),
             "ForegroundChanged",
