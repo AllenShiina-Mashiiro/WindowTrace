@@ -30,6 +30,9 @@ public sealed class DiagnosticSessionManager
     private uint? _lastForegroundProcessId;
     private long? _postCaptureDeadlineQpc;
     private long _sessionStartQpc;
+    private double _actualPreRollMs;
+    private int _preRollEventCount;
+    private long _bufferEvictionsAtSessionStart;
 
     public DiagnosticSessionManager(QpcClock clock, BoundedEventBuffer buffer)
     {
@@ -170,11 +173,14 @@ public sealed class DiagnosticSessionManager
             .OrderBy(e => e.QpcTimestamp)
             .ToArray();
 
+        _preRollEventCount = preRollEvents.Length;
+        _bufferEvictionsAtSessionStart = _buffer.DroppedEvents;
         foreach (var priorEvent in preRollEvents)
             _writer.TryWrite(ForActiveSession(priorEvent));
 
         var earliestQpc = preRollEvents.Length == 0 ? focusLostQpc : preRollEvents[0].QpcTimestamp;
         var actualPreRollMs = Math.Max(0, _clock.ElapsedMilliseconds(earliestQpc, focusLostQpc));
+        _actualPreRollMs = actualPreRollMs;
         var qualityDetails = $"RequestedPreRollMs=3000;ActualPreRollMs={actualPreRollMs:F3};PreRollEventCount={preRollEvents.Length};BufferCapacity={_buffer.Capacity};BufferEvictionsSinceStartup={_buffer.DroppedEvents}";
         var marker = new DiagnosticEvent(
             Guid.NewGuid(),
@@ -204,6 +210,7 @@ public sealed class DiagnosticSessionManager
     public async Task CheckPostCaptureDeadlineAsync()
     {
         JsonlEventWriter? completedWriter = null;
+        long completionQpc = 0;
         lock (_gate)
         {
             if (_writer is null || _postCaptureDeadlineQpc is not long deadline)
@@ -213,7 +220,7 @@ public sealed class DiagnosticSessionManager
                 return;
 
             completedWriter = _writer;
-            var completionQpc = _clock.GetTimestamp();
+            completionQpc = _clock.GetTimestamp();
             completedWriter.TryWrite(new DiagnosticEvent(
                 Guid.NewGuid(), "DiagnosticSessionCompleted", "WindowTrace",
                 completionQpc, _clock.Frequency, _clock.ToUtc(completionQpc),
@@ -228,18 +235,21 @@ public sealed class DiagnosticSessionManager
         }
 
         await completedWriter.DisposeAsync();
-        StatusChanged?.Invoke($"Diagnostic session completed: {completedWriter.FilePath}. Queue drops: {completedWriter.DroppedRecords}.");
+        await WriteQualityReportAsync(completedWriter, completionQpc, "PostCaptureElapsed");
+        StatusChanged?.Invoke($"Diagnostic session completed: {completedWriter.FilePath}. Queue drops: {completedWriter.DroppedRecords}; size limit reached: {completedWriter.LimitReached}.");
     }
 
     public async Task StopAsync()
     {
         JsonlEventWriter? writer;
+        long completionQpc = 0;
         lock (_gate)
         {
             writer = _writer;
             if (writer is not null)
             {
                 var stopQpc = _clock.GetTimestamp();
+                completionQpc = stopQpc;
                 writer.TryWrite(new DiagnosticEvent(
                     Guid.NewGuid(), "DiagnosticSessionStopped", "WindowTrace",
                     stopQpc, _clock.Frequency, _clock.ToUtc(stopQpc),
@@ -258,7 +268,40 @@ public sealed class DiagnosticSessionManager
         if (writer is not null)
         {
             await writer.DisposeAsync();
-            StatusChanged?.Invoke($"Diagnostic session stopped and saved: {writer.FilePath}. Queue drops: {writer.DroppedRecords}.");
+            await WriteQualityReportAsync(writer, completionQpc, "MonitoringStopped");
+            StatusChanged?.Invoke($"Diagnostic session stopped and saved: {writer.FilePath}. Queue drops: {writer.DroppedRecords}; size limit reached: {writer.LimitReached}.");
+        }
+    }
+
+    private async Task WriteQualityReportAsync(JsonlEventWriter writer, long completionQpc, string reason)
+    {
+        var report = new SessionQualityReport(
+            _sessionId,
+            _clock.ToUtc(completionQpc),
+            reason,
+            _targetProcessId,
+            _targetProcessName,
+            _sessionStartQpc,
+            completionQpc,
+            3000,
+            _actualPreRollMs,
+            _preRollEventCount,
+            _buffer.Capacity,
+            _bufferEvictionsAtSessionStart,
+            writer.DroppedRecords,
+            writer.BytesWritten,
+            writer.MaxBytes,
+            writer.LimitReached,
+            writer.LastError?.ToString());
+
+        try
+        {
+            var qualityPath = Path.ChangeExtension(writer.FilePath, ".quality.json");
+            await SessionQualityReport.WriteAsync(qualityPath, report);
+        }
+        catch (Exception ex)
+        {
+            StatusChanged?.Invoke($"Unable to write session quality report: {ex.Message}");
         }
     }
 }
