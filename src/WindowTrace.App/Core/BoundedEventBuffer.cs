@@ -46,4 +46,13 @@ public sealed class BoundedEventBuffer
         lock (_gate)
             _events.Clear();
     }
+
+    public void Reset()
+    {
+        lock (_gate)
+        {
+            _events.Clear();
+            _droppedEvents = 0;
+        }
+    }
 }
