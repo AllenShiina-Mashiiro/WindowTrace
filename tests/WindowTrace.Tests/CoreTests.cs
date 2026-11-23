@@ -244,6 +244,7 @@ public sealed class CoreTests
             var report30 = await File.ReadAllTextAsync(report30Path);
             Assert.Contains("ETW events in interval (all providers): 97", report30);
             Assert.Contains("Win32k ETW events in interval: 97", report30);
+            Assert.Contains("Win32k ETW events for target PID 21948: 97; other/unknown PID: 0", report30);
             Assert.Contains("ETW event detail limit reached: 67 additional events", report30);
 
             var report300Path = await SessionReportGenerator.WriteAsync(
