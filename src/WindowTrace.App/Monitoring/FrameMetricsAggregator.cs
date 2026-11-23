@@ -5,21 +5,30 @@ namespace WindowTrace.Monitoring;
 
 /// <summary>
 /// Produces rolling rendering summaries from PresentMon 2.x frame rows.
-/// Frame intervals are taken from PresentMon metrics when available; QPC deltas
-/// are a fallback grouped by swap-chain address.
+/// Frame intervals are aggregated per swap chain so overlays or secondary
+/// swap chains are not mixed into the game's primary frame-rate series.
 /// </summary>
 public sealed class FrameMetricsAggregator
 {
     private const int WindowSize = 120;
+    private const int MaximumSwapChains = 32;
     private readonly QpcClock _clock;
-    private readonly Queue<double> _frameTimesMs = new();
-    private readonly Dictionary<string, long> _previousQpcBySwapChain = new(StringComparer.OrdinalIgnoreCase);
-    private long _lastSummaryQpc;
+    private readonly Dictionary<string, SwapChainState> _swapChains = new(StringComparer.OrdinalIgnoreCase);
 
     public FrameMetricsAggregator(QpcClock clock) => _clock = clock;
 
     public DiagnosticEvent? AddFrame(long qpc, IReadOnlyDictionary<string, string> fields, bool qpcIsFrameTimestamp)
     {
+        var swapChain = Read(fields, "SwapChainAddress") ?? "default";
+        if (!_swapChains.TryGetValue(swapChain, out var state))
+        {
+            if (_swapChains.Count >= MaximumSwapChains)
+                _swapChains.Remove(_swapChains.Keys.First());
+
+            state = new SwapChainState();
+            _swapChains[swapChain] = state;
+        }
+
         var frameTime = TryReadPositive(fields, "MsBetweenPresents");
         var frameTimeSource = "MsBetweenPresents";
 
@@ -31,32 +40,32 @@ public sealed class FrameMetricsAggregator
 
         if (frameTime is null && qpcIsFrameTimestamp && qpc > 0)
         {
-            var swapChain = Read(fields, "SwapChainAddress") ?? "default";
-            if (_previousQpcBySwapChain.TryGetValue(swapChain, out var previousQpc) && qpc > previousQpc)
+            if (state.PreviousQpc > 0 && qpc > state.PreviousQpc)
             {
-                frameTime = _clock.ElapsedMilliseconds(previousQpc, qpc);
+                frameTime = _clock.ElapsedMilliseconds(state.PreviousQpc, qpc);
                 frameTimeSource = "SwapChainQpcDelta";
             }
-
-            _previousQpcBySwapChain[swapChain] = qpc;
         }
+
+        if (qpcIsFrameTimestamp && qpc > 0)
+            state.PreviousQpc = qpc;
 
         if (!frameTime.HasValue || frameTime.Value <= 0 || double.IsNaN(frameTime.Value) || double.IsInfinity(frameTime.Value))
             return null;
 
-        _frameTimesMs.Enqueue(frameTime.Value);
-        while (_frameTimesMs.Count > WindowSize)
-            _frameTimesMs.Dequeue();
+        state.FrameTimesMs.Enqueue(frameTime.Value);
+        while (state.FrameTimesMs.Count > WindowSize)
+            state.FrameTimesMs.Dequeue();
 
-        if (_frameTimesMs.Count < 2)
+        if (state.FrameTimesMs.Count < 2)
             return null;
 
-        if (_lastSummaryQpc != 0 && qpc - _lastSummaryQpc < _clock.Frequency)
+        if (state.LastSummaryQpc != 0 && qpc - state.LastSummaryQpc < _clock.Frequency)
             return null;
 
-        _lastSummaryQpc = qpc;
+        state.LastSummaryQpc = qpc;
 
-        var values = _frameTimesMs.ToArray();
+        var values = state.FrameTimesMs.ToArray();
         var average = values.Average();
         var variance = values.Sum(value => Math.Pow(value - average, 2)) / values.Length;
         var ordered = values.OrderBy(value => value).ToArray();
@@ -67,9 +76,10 @@ public sealed class FrameMetricsAggregator
         var gpuBusy = Read(fields, "MsGPUBusy");
         var gpuWait = Read(fields, "MsGPUWait");
         var dropped = Read(fields, "Dropped");
+        var timestampQuality = qpcIsFrameTimestamp ? "PresentMonQpc" : "ConsumerReceiptQpc";
 
         var details =
-            $"FrameTimeSource={frameTimeSource};SummaryTimestampQuality={(qpcIsFrameTimestamp ? "PresentMonQpc" : "ConsumerReceiptQpc")};" +
+            $"SwapChainAddress={swapChain};FrameTimeSource={frameTimeSource};SummaryTimestampQuality={timestampQuality};" +
             $"SampleCount={values.Length};FPS={1000d / average:F2};" +
             $"AverageFrameTimeMs={average:F3};FrameTimeVarianceMs2={variance:F4};" +
             $"FrameTimeStdDevMs={Math.Sqrt(variance):F3};FrameTimeP95Ms={ordered[p95Index]:F3};" +
@@ -108,4 +118,11 @@ public sealed class FrameMetricsAggregator
 
     private static string? Read(IReadOnlyDictionary<string, string> fields, string key)
         => fields.TryGetValue(key, out var value) ? value : null;
+
+    private sealed class SwapChainState
+    {
+        public Queue<double> FrameTimesMs { get; } = new();
+        public long PreviousQpc { get; set; }
+        public long LastSummaryQpc { get; set; }
+    }
 }
