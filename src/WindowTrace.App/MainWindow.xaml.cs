@@ -446,6 +446,7 @@ public partial class MainWindow : Window
             return;
 
         await _etwCollector.DisposeAsync();
+        _sessions.SetEtwEventsLost(_etwCollector.EventsLost);
         FooterText.Text = _etwCollector.EventsLost >= 0
             ? $"ETW collector stopped. Events lost: {_etwCollector.EventsLost}."
             : "ETW collector stopped. Event-loss count unavailable.";
@@ -540,6 +541,7 @@ public partial class MainWindow : Window
         if (lost >= 0 && lost != _lastReportedEtwEventsLost)
         {
             _lastReportedEtwEventsLost = lost;
+            _sessions.SetEtwEventsLost(lost);
             var qpc = _clock.GetTimestamp();
             _sessions.PublishTelemetry(new DiagnosticEvent(
                 Guid.NewGuid(),
