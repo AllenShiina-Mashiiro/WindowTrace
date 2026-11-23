@@ -26,12 +26,7 @@ public sealed class QpcClock
             var fileTimeValue = ((long)fileTime.High << 32) | fileTime.Low;
             _anchorUtc = new DateTimeOffset(DateTime.FromFileTimeUtc(fileTimeValue));
         }
-        catch (EntryPointNotFoundException)
-        {
-            _anchorQpc = Stopwatch.GetTimestamp();
-            _anchorUtc = DateTimeOffset.UtcNow;
-        }
-        catch (DllNotFoundException)
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or ArgumentOutOfRangeException)
         {
             _anchorQpc = Stopwatch.GetTimestamp();
             _anchorUtc = DateTimeOffset.UtcNow;
