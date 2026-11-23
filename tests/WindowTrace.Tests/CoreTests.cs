@@ -247,6 +247,69 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public async Task DiagnosticSessionManager_ResetsPostCaptureDeadlineAfterRepeatedFocusLoss()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "WindowTrace.Tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var clock = new QpcClock();
+        var manager = new DiagnosticSessionManager(clock, new BoundedEventBuffer(1000), directory);
+
+        try
+        {
+            manager.SetTarget(111, "TestGame", 111);
+            var origin = clock.GetTimestamp();
+
+            var firstLoss = origin + clock.Frequency;
+            manager.PublishForeground(
+                CreateEvent(firstLoss) with { EventType = "ForegroundChanged", ProcessId = 222 },
+                222);
+
+            var firstGain = origin + (long)(clock.Frequency * 2d);
+            manager.PublishForeground(
+                CreateEvent(firstGain) with { EventType = "ForegroundChanged", ProcessId = 111 },
+                111);
+
+            var secondLoss = origin + (long)(clock.Frequency * 3d);
+            manager.PublishForeground(
+                CreateEvent(secondLoss) with { EventType = "ForegroundChanged", ProcessId = 222 },
+                222);
+
+            var secondGain = origin + (long)(clock.Frequency * 4d);
+            manager.PublishForeground(
+                CreateEvent(secondGain) with { EventType = "ForegroundChanged", ProcessId = 111 },
+                111);
+
+            var finalDeadline = secondGain + (long)(clock.Frequency * 5d);
+            await manager.CheckPostCaptureDeadlineAsync(finalDeadline - 1);
+
+            Assert.True(manager.IsSessionActive);
+            Assert.Equal(DiagnosticSessionState.FocusGainedPostCapture, manager.State);
+
+            await manager.CheckPostCaptureDeadlineAsync(finalDeadline);
+
+            Assert.False(manager.IsSessionActive);
+            Assert.Equal(DiagnosticSessionState.Completed, manager.State);
+
+            var jsonlPath = Assert.IsType<string>(manager.LastCompletedSessionPath);
+            var lines = await File.ReadAllLinesAsync(jsonlPath);
+            var events = lines
+                .Where(line => !string.IsNullOrWhiteSpace(line))
+                .Select(line => System.Text.Json.JsonSerializer.Deserialize<DiagnosticEvent>(line))
+                .Where(item => item is not null)
+                .ToArray();
+
+            Assert.Equal(2, events.Count(item => item!.EventType == "FocusGained"));
+            Assert.Contains(events, item => item!.EventType == "FocusLostAgain");
+            Assert.Contains(events, item => item!.EventType == "DiagnosticSessionCompleted");
+        }
+        finally
+        {
+            try { await manager.StopAsync(); } catch { }
+            try { Directory.Delete(directory, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
     public async Task CsvExporter_PreservesFieldsAndEscapesCommasAndQuotes()
     {
         var directory = Path.Combine(Path.GetTempPath(), "WindowTrace.Tests", Guid.NewGuid().ToString("N"));
