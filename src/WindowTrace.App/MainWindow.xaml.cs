@@ -172,6 +172,8 @@ public partial class MainWindow : Window
             if (_sessions.TargetProcessId is uint targetPid)
             {
                 EnsureEtwCollectorStarted();
+                if (initialForeground is not null)
+                    RegisterTargetWindowThread(initialForeground);
                 await StartTargetCollectorsAsync(targetPid);
             }
             else
@@ -307,6 +309,7 @@ public partial class MainWindow : Window
             if (_isMonitoring)
             {
                 EnsureEtwCollectorStarted();
+                RegisterTargetWindowThread(snapshot);
                 await StartTargetCollectorsAsync(snapshot.ProcessId);
 
                 var currentForeground = _windowMonitor.CaptureForeground();
@@ -481,13 +484,25 @@ public partial class MainWindow : Window
         }
     }
 
+    private void RegisterTargetWindowThread(WindowSnapshot snapshot)
+    {
+        if (_sessions.TargetProcessId == snapshot.ProcessId)
+            _etwCollector?.RegisterTargetWindowThread(snapshot.ProcessId, snapshot.ThreadId);
+    }
+
     private void EnsureEtwCollectorStarted()
     {
-        if (_etwCollector is not null)
+        if (_sessions.TargetProcessId is not uint targetPid)
             return;
 
+        if (_etwCollector is not null)
+        {
+            _etwCollector.SetTargetProcessId(targetPid);
+            return;
+        }
+
         _lastReportedEtwEventsLost = -1;
-        var collector = new EtwRealtimeCollector(_clock);
+        var collector = new EtwRealtimeCollector(_clock, targetPid);
         collector.EventReceived += OnEtwEvent;
         collector.CollectorWarning += OnCollectorWarning;
         try
@@ -572,6 +587,7 @@ public partial class MainWindow : Window
 
     private void PublishForegroundSnapshot(WindowSnapshot snapshot)
     {
+        RegisterTargetWindowThread(snapshot);
         var item = new DiagnosticEvent(
             Guid.NewGuid(),
             "ForegroundSnapshot",
@@ -609,6 +625,7 @@ public partial class MainWindow : Window
         if (!_isMonitoring || _isClosing)
             return;
 
+        RegisterTargetWindowThread(snapshot);
         var diagnosticEvent = new DiagnosticEvent(
             Guid.NewGuid(),
             "ForegroundChanged",
@@ -641,6 +658,7 @@ public partial class MainWindow : Window
         if (!_isMonitoring || _isClosing)
             return;
 
+        RegisterTargetWindowThread(snapshot);
         var item = new DiagnosticEvent(
             Guid.NewGuid(),
             snapshot.EventType,
