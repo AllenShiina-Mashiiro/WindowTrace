@@ -19,6 +19,8 @@ public partial class MainWindow : Window
     private readonly WindowMonitor _windowMonitor;
     private readonly DiagnosticSessionManager _sessions;
     private readonly DispatcherTimer _sessionTimer;
+    private readonly DispatcherTimer _targetPickTimer;
+    private int _targetPickRemaining;
 
     private EtwRealtimeCollector? _etwCollector;
     private CpuSampler? _cpuSampler;
@@ -53,6 +55,9 @@ public partial class MainWindow : Window
             Interval = TimeSpan.FromMilliseconds(100)
         };
         _sessionTimer.Tick += SessionTimer_Tick;
+
+        _targetPickTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _targetPickTimer.Tick += TargetPickTimer_Tick;
 
         EnvironmentText.Text =
             $"Environment: {RuntimeInformation.OSDescription} | " +
@@ -204,24 +209,49 @@ public partial class MainWindow : Window
         await StopMonitoringAsync();
     }
 
-    private async void SetTargetButton_Click(object sender, RoutedEventArgs e)
+    private void SetTargetButton_Click(object sender, RoutedEventArgs e)
     {
+        if (_sessions.IsSessionActive)
+        {
+            MessageBox.Show(this, "A diagnostic session is active. Stop monitoring before changing the target.",
+                "WindowTrace", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        _targetPickRemaining = 3;
+        StatusText.Text = "Switch to the game now";
+        FooterText.Text = "Target picker armed. Switch to the game within 3 seconds; WindowTrace will capture the foreground process.";
+        _targetPickTimer.Stop();
+        _targetPickTimer.Start();
+    }
+
+    private async void TargetPickTimer_Tick(object? sender, EventArgs e)
+    {
+        _targetPickRemaining--;
+        if (_targetPickRemaining > 0)
+        {
+            StatusText.Text = $"Capturing foreground process in {_targetPickRemaining}...";
+            return;
+        }
+
+        _targetPickTimer.Stop();
+        var snapshot = _windowMonitor.CaptureForeground();
+        if (snapshot is null || snapshot.ProcessId == Environment.ProcessId)
+        {
+            StatusText.Text = "Target selection not completed";
+            FooterText.Text = "WindowTrace is still foreground. Click the target picker and switch to the game during the 3-second countdown.";
+            return;
+        }
+
         try
         {
-            var snapshot = _windowMonitor.CaptureForeground();
-            if (snapshot is null)
-            {
-                MessageBox.Show(this, "Unable to identify the current foreground process.", "WindowTrace",
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
             if (_sessions.IsSessionActive)
                 throw new InvalidOperationException("A diagnostic session is active. Stop monitoring before changing the target.");
 
             await StopTargetCollectorsAsync();
             _sessions.SetTarget(snapshot.ProcessId, snapshot.ProcessName, snapshot.ProcessId);
             TargetText.Text = $"Target: {snapshot.ProcessName} (PID {snapshot.ProcessId}) | {snapshot.WindowTitle}";
+            StatusText.Text = $"Target selected: {snapshot.ProcessName}";
             if (_isMonitoring)
             {
                 EnsureEtwCollectorStarted();
@@ -241,6 +271,7 @@ public partial class MainWindow : Window
             if (_sessions.IsSessionActive)
                 throw new InvalidOperationException("A diagnostic session is active. Stop monitoring before clearing the target.");
 
+            _targetPickTimer.Stop();
             await StopTargetCollectorsAsync();
             await StopEtwCollectorAsync();
             _sessions.ClearTarget();
@@ -656,6 +687,7 @@ public partial class MainWindow : Window
         e.Cancel = true;
         _isClosing = true;
 
+        _targetPickTimer.Stop();
         await StopMonitoringAsync();
         var handle = new WindowInteropHelper(this).Handle;
         if (handle != IntPtr.Zero)
