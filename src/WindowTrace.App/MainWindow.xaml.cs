@@ -180,8 +180,8 @@ public partial class MainWindow : Window
                 if (initialForeground is not null)
                     RegisterTargetWindowThread(initialForeground);
                 await StartTargetCollectorsAsync(targetPid);
-                StatusText.Text = $"Ready: waiting for { _sessions.TargetProcessName } to lose focus";
-                FooterText.Text = $"Monitoring is armed for {_sessions.TargetProcessName}. Switch to the game, wait at least 3 seconds, Alt+Tab to another app, then return. A session starts automatically on focus loss.";
+                StatusText.Text = "Preparing capture buffer";
+                FooterText.Text = "WindowTrace is warming up the rolling pre-capture buffer. It will tell you when it is ready; no stopwatch is needed.";
             }
         }
         catch (Exception ex)
@@ -438,7 +438,7 @@ public partial class MainWindow : Window
         }
 
         FooterText.Text = _isMonitoring
-            ? "Target ready. Switch to the game and wait at least 3 seconds, Alt+Tab away, then return. Capture starts automatically when the game loses focus."
+            ? "Target selected. WindowTrace will show when the rolling pre-capture buffer is ready."
             : "Target selected. Next click '2. Start monitoring'.";
     }
 
@@ -809,9 +809,32 @@ public partial class MainWindow : Window
         DisplayEvent(item);
     }
 
+    private void UpdateCaptureReadinessStatus()
+    {
+        if (!_isMonitoring || _sessions.TargetProcessId is null || _sessions.IsSessionActive ||
+            _sessions.State is not (DiagnosticSessionState.Idle or DiagnosticSessionState.Completed))
+            return;
+
+        var coverageMs = _sessions.PreRollCoverageMilliseconds;
+        if (coverageMs >= 2999)
+        {
+            StatusText.Text = "Ready to reproduce";
+            FooterText.Text =
+                $"Capture buffer ready for {_sessions.TargetProcessName}. Reproduce the issue now: Alt+Tab away, then return to the game. " +
+                "After return, WindowTrace captures at least 1.5 seconds and finishes when CPU and GPU samples arrive (maximum 3 seconds).";
+        }
+        else
+        {
+            StatusText.Text = $"Preparing capture buffer ({coverageMs / 1000d:F1}/3.0 s)";
+            FooterText.Text =
+                "Keep monitoring running. WindowTrace is filling its rolling 3-second pre-capture buffer and will indicate when it is ready.";
+        }
+    }
+
     private async void SessionTimer_Tick(object? sender, EventArgs e)
     {
         await _sessions.CheckPostCaptureDeadlineAsync();
+        UpdateCaptureReadinessStatus();
 
         var windowDrops = _windowMonitor.DroppedPendingEvents;
         if (windowDrops != _lastReportedWindowEventDrops)
@@ -931,7 +954,15 @@ public partial class MainWindow : Window
         Dispatcher.InvokeAsync(() =>
         {
             FooterText.Text = message;
-            StatusText.Text = _sessions.State.ToString();
+            StatusText.Text = _sessions.State switch
+            {
+                DiagnosticSessionState.FocusLost or DiagnosticSessionState.Background =>
+                    "Recording while game is in background",
+                DiagnosticSessionState.FocusGainedPostCapture =>
+                    "Game returned — collecting response evidence",
+                DiagnosticSessionState.Completed => "Capture saved",
+                _ => message
+            };
             OpenReportButton.IsEnabled =
                 _sessions.LastCompletedReportPath is string reportPath && File.Exists(reportPath);
         });
