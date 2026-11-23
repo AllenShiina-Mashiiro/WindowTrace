@@ -29,4 +29,5 @@ public sealed record WindowSnapshot(
     int ObjectId = 0,
     int ChildId = 0,
     nint? FocusedWindowHandle = null,
-    uint? GuiThreadFlags = null);
+    uint? GuiThreadFlags = null,
+    double? FocusQueryDelayMs = null);
