@@ -59,15 +59,15 @@ Missing data is not filled with zero. A provider or counter that is not availabl
 ## How to use the current development build
 
 1. Run WindowTrace on the computer where the game will be tested.
-2. Click **Pick game in 3 seconds**.
-3. Immediately switch to the game. WindowTrace captures the foreground process after the countdown.
-4. Optionally select the official `PresentMon.exe` using **Browse PresentMon.exe**.
-5. Click **Start monitoring**.
+2. Optionally select the official PresentMon 2.x executable using **Browse PresentMon.exe**.
+3. Click **Start monitoring**.
+4. Click **Pick game in 3 seconds**, then immediately switch to the game. WindowTrace captures the foreground process after the countdown.
+5. Wait at least 3 seconds for target CPU/GPU, ETW and optional PresentMon collectors to warm up.
 6. Switch away from the target game, then return to it.
 7. Wait at least 5 seconds after returning. The diagnostic session should then be finalized automatically.
 8. Use **Export last session CSV** if a spreadsheet-friendly copy is needed.
 
-Selecting the target before starting monitoring is recommended. If the target is selected after monitoring starts, target CPU/GPU sampling and the ETW collector start at that point.
+Starting monitoring before picking the target is recommended. If a target was selected before monitoring starts and is no longer foreground, bring it back to the foreground once after starting monitoring; the next focus loss will trigger the diagnostic session.
 
 ### Optional input timestamp marker
 
