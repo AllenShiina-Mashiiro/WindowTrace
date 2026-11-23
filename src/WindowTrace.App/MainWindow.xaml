@@ -55,7 +55,7 @@
                 <TextBlock x:Name="TargetText" Text="No target selected. Bring the game to the foreground, then select it below."
                            Foreground="#64748B" Margin="0,4,0,10" TextWrapping="Wrap" />
                 <WrapPanel VerticalAlignment="Center">
-                    <Button x:Name="SetTargetButton" Content="Use current foreground as target"
+                    <Button x:Name="SetTargetButton" Content="Pick game in 3 seconds"
                             Click="SetTargetButton_Click" Padding="12,7" Margin="0,0,8,8" />
                     <Button x:Name="ClearTargetButton" Content="Clear target"
                             Click="ClearTargetButton_Click" Padding="12,7" Margin="0,0,8,8" />
